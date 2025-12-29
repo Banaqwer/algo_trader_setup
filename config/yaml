@@ -1,0 +1,78 @@
+# Algo Trader Default Configuration
+# Override with environment variables or CLI arguments
+
+# ======================================================
+# BROKER & DATA
+# ======================================================
+oanda_access_token: ${OANDA_ACCESS_TOKEN}
+oanda_account_id:  ${OANDA_ACCOUNT_ID}
+oanda_env:  practice
+universe: EUR_USD,GBP_USD,USD_JPY,AUD_USD,USD_CAD,USD_CHF,NZD_USD
+price_type: M
+
+# ======================================================
+# BACKTEST SCOPE
+# ======================================================
+backtest_years: 5
+start_date: "2019-01-01"
+end_date: "2024-12-31"
+
+# ======================================================
+# DIRECTORIES
+# ======================================================
+data_dir: ./data
+artifact_dir: ./artifacts
+log_dir: ./logs
+
+# ======================================================
+# EXECUTION MODE & SAFETY
+# ======================================================
+mode: backtest
+execution_enabled: false
+kill_switch: true
+
+# ======================================================
+# BACKTEST REALISM
+# ======================================================
+apply_spread: true
+apply_slippage: true
+slippage_bps: 1.5
+spread_filter_pctl: 80
+
+# ======================================================
+# TRADE POLICY - ADAPTIVE TRADING
+# ======================================================
+adaptive_trading: true
+base_max_trades_per_day: 10
+min_trades_per_day: 2
+max_trades_per_day:  20
+
+# Confidence thresholds
+min_confidence_to_trade: 0.62
+confidence_multiplier: 0.75
+
+# Classic fixed limit (fallback if adaptive disabled)
+max_trades_per_day_fixed: 10
+
+block_rollover: true
+rollover_window_utc: "21:55-22:10"
+block_weekend: true
+weekend_cutoff_utc: "Fri 20:00"
+
+# ======================================================
+# LEARNING SCHEDULE
+# ======================================================
+enable_learning_updates: true
+min_bucket_trades_for_update:  30
+
+# ======================================================
+# LOGGING
+# ======================================================
+log_level: INFO
+
+# ======================================================
+# WALK-FORWARD
+# ======================================================
+walkforward_train_years:  4
+walkforward_test_months: 6
+walkforward_step_months: 3
