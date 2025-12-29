@@ -113,6 +113,10 @@ class BacktesterComplete:
 
             logger.  info("Saving results...")
             self._save_results(run_id, run_dir, trades, data_cache)
+            
+            # Flush any pending learning engine updates
+            if self.settings.enable_learning_updates:
+                self.learning_engine.flush()
 
             logger.  info(
                 f"Backtest complete:   {len(trades)} trades, "
@@ -223,6 +227,11 @@ class BacktesterComplete:
         logger.info(f"Event loop: {len(base_data)} candles")
 
         warmup_bars = 200
+        
+        # Pre-extract time arrays for faster lookup
+        time_cache = {}
+        for key, df in data_cache.items():
+            time_cache[key] = df["time"].values
 
         for idx in range(warmup_bars, len(base_data)):
 
@@ -255,11 +264,16 @@ class BacktesterComplete:
                 try:
                     features_dict = {}
                     for tf in timeframes:
-                        if (instrument, tf) in data_cache:
-                            df = data_cache[(instrument, tf)]
-                            tf_subset = df[df["time"] <= current_time]
-                            if len(tf_subset) > 0:
-                                features_dict[tf] = tf_subset
+                        key = (instrument, tf)
+                        if key in data_cache:
+                            # Use pre-computed time array for faster filtering
+                            df = data_cache[key]
+                            time_arr = time_cache[key]
+                            mask = time_arr <= current_time
+                            if mask.any():
+                                tf_subset = df[mask]
+                                if len(tf_subset) > 0:
+                                    features_dict[tf] = tf_subset
 
                     if not features_dict:
                         continue
@@ -387,17 +401,21 @@ class BacktesterComplete:
                     except Exception as e:
                         logger.warning(f"Trade execution error: {e}")
 
+            # Update open positions with current prices - optimized
             for instrument in instruments:
-                if (instrument, "M5") not in data_cache:
+                key = (instrument, "M5")
+                if key not in data_cache:
                     continue
 
-                inst_data = data_cache[(instrument, "M5")]
-                current_price_data = inst_data[inst_data["time"] == current_time]
+                inst_data = data_cache[key]
+                # Use loc for faster single-row lookup
+                current_price_data = inst_data.loc[inst_data["time"] == current_time, "close"]
                 if len(current_price_data) == 0:
                     continue
 
-                current_price = float(current_price_data["close"].iloc[0])
+                current_price = float(current_price_data.iloc[0])
 
+                # Only process trades for this instrument
                 for trade in list(self.broker.open_trades.values()):
                     if trade.  instrument == instrument: 
                         result = self.  broker.update_price(
