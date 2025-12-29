@@ -8,6 +8,7 @@ Multi-Timeframe Trend Breakout Pattern
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Tuple
+from feature_engineering import compute_atr, compute_ema
 
 
 class BreakoutPattern:
@@ -25,18 +26,7 @@ class BreakoutPattern:
         self.sl_atr_multiplier = 2.0  # SL distance = 2 x ATR
         self.tp_atr_multiplier = 4.0  # TP distance = 4 x ATR (1: 2 R/R)
 
-    def calculate_atr(self, high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
-        """Calculate Average True Range"""
-        tr1 = high - low
-        tr2 = abs(high - close. shift())
-        tr3 = abs(low - close.shift())
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr = tr.rolling(window=period).mean()
-        return atr
 
-    def calculate_ema(self, close: pd.Series, period: int) -> pd.Series:
-        """Calculate Exponential Moving Average"""
-        return close.ewm(span=period, adjust=False).mean()
 
     def analyze_m5(self, df_m5: pd.DataFrame) -> Dict:
         """Analyze M5 timeframe for breakout signals"""
@@ -83,8 +73,9 @@ class BreakoutPattern:
             return trend
 
         # Calculate EMA 50
-        ema_50 = self.calculate_ema(df_h1["close"], self.h1_ema_period)
-        current_ema = ema_50.iloc[-1]
+        close_values = df_h1["close"].values
+        ema_50_values = compute_ema(close_values, self.h1_ema_period)
+        current_ema = ema_50_values[-1]
         current_price = df_h1["close"]. iloc[-1]
 
         # Uptrend:  price above EMA 50
@@ -108,8 +99,11 @@ class BreakoutPattern:
         h1_trend = self.analyze_h1(df_h1)
 
         # Calculate ATR for risk management
-        atr = self. calculate_atr(df_m5["high"], df_m5["low"], df_m5["close"])
-        current_atr = atr.iloc[-1]
+        high_values = df_m5["high"].values
+        low_values = df_m5["low"].values
+        close_values = df_m5["close"].values
+        atr_values = compute_atr(high_values, low_values, close_values)
+        current_atr = atr_values[-1]
 
         if pd.isna(current_atr) or current_atr < 0.0001:
             return signals
