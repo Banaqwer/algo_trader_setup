@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 import numpy as np
-from patterns. base import Pattern, PatternSignal
+from patterns.base import Pattern, PatternSignal, validate_features_length, detect_breakout
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class FailedBreakoutPattern(Pattern):
                   features: pd.DataFrame, context: dict) -> PatternSignal:
         """Detect failed breakout setup."""
         
-        if len(features) < 40:
+        if not validate_features_length(features, 40):
             return None
         
         lookback_structure = 20
@@ -31,8 +31,9 @@ class FailedBreakoutPattern(Pattern):
         current_low = low_vals[-1]
         prior_close = close_vals[-2]
         
-        bullish_breakout = current_high > structure_high and prior_close < structure_high
-        bearish_breakout = current_low < structure_low and prior_close > structure_low
+        bullish_breakout, bearish_breakout = detect_breakout(
+            current_high, current_low, prior_close, structure_high, structure_low
+        )
         
         if not (bullish_breakout or bearish_breakout):
             return None

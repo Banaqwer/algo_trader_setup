@@ -8,7 +8,7 @@ from scipy import stats
 logger = logging.getLogger(__name__)
 
 def compute_atr(high:  np.ndarray, low: np. ndarray, close: np.ndarray, period: int = 14) -> np.ndarray:
-    """Average True Range."""
+    """Average True Range - optimized with pandas EWM."""
     tr = np.maximum(
         high - low,
         np.maximum(
@@ -17,36 +17,28 @@ def compute_atr(high:  np.ndarray, low: np. ndarray, close: np.ndarray, period: 
         )
     )
     tr[0] = 0
-    atr = np.zeros_like(tr)
-    atr[period - 1] = tr[:  period].  mean()
-    for i in range(period, len(tr)):
-        atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period
+    # Use pandas exponential weighted moving average (faster than loop)
+    alpha = 1.0 / period
+    atr = pd.Series(tr).ewm(alpha=alpha, adjust=False).mean().values
     return atr
 
 def compute_ema(data: np.ndarray, period: int) -> np.ndarray:
-    """Exponential Moving Average."""
+    """Exponential Moving Average - optimized with pandas EWM."""
     alpha = 2 / (period + 1)
-    ema = np.zeros_like(data)
-    ema[0] = data[0]
-    for i in range(1, len(data)):
-        ema[i] = alpha * data[i] + (1 - alpha) * ema[i - 1]
+    # Use pandas EWM for vectorized computation (much faster than loop)
+    ema = pd.Series(data).ewm(alpha=alpha, adjust=False).mean().values
     return ema
 
 def compute_rsi(close: np.ndarray, period: int = 14) -> np.ndarray:
-    """Relative Strength Index."""
-    diff = np.diff(close)
+    """Relative Strength Index - optimized with pandas EWM."""
+    diff = np.diff(close, prepend=close[0])
     gain = np.where(diff > 0, diff, 0)
     loss = np.where(diff < 0, -diff, 0)
 
-    avg_gain = np.zeros_like(close)
-    avg_loss = np.zeros_like(close)
-
-    avg_gain[period] = gain[: period].mean()
-    avg_loss[period] = loss[:period].mean()
-
-    for i in range(period + 1, len(close)):
-        avg_gain[i] = (avg_gain[i - 1] * (period - 1) + gain[i - 1]) / period
-        avg_loss[i] = (avg_loss[i - 1] * (period - 1) + loss[i - 1]) / period
+    # Use pandas EWM for vectorized computation (much faster than loop)
+    alpha = 1.0 / period
+    avg_gain = pd.Series(gain).ewm(alpha=alpha, adjust=False).mean().values
+    avg_loss = pd.Series(loss).ewm(alpha=alpha, adjust=False).mean().values
 
     rs = np.divide(avg_gain, avg_loss, where=avg_loss != 0, out=np.zeros_like(avg_loss))
     rsi = 100 - (100 / (1 + rs))
@@ -178,11 +170,13 @@ class FeatureEngine:
         # Regime
         features["trend_regime"] = np.sign(features["ema_20"] - features["ema_50"])
 
-        atr_pct = pd.Series(features["atr_14"]).rolling(100).apply(
-            lambda x: stats.percentileofscore(x, x.iloc[-1]) if len(x) > 0 else 50,
-            raw=False
-        )
-        features["atr_pctl_100"] = atr_pct. values
+        # Optimized ATR percentile calculation using numpy percentile
+        atr_14_values = features["atr_14"].values
+        atr_pct = np.full(len(atr_14_values), 50.0)
+        for i in range(100, len(atr_14_values)):
+            window = atr_14_values[i-100:i+1]
+            atr_pct[i] = stats.percentileofscore(window, atr_14_values[i])
+        features["atr_pctl_100"] = atr_pct
 
         self.feature_cache[(instrument, timeframe)] = features
         return features

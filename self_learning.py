@@ -101,6 +101,8 @@ class SelfLearningEngine:
         self.db_path = os.path.join(data_dir, "pattern_stats.db")
         
         self.buckets:  Dict[Tuple, PatternStatBucket] = {}
+        self.pending_saves = 0  # Track number of unsaved updates
+        self.save_batch_size = 10  # Save every N updates instead of every trade
         
         self._init_db()
         self._load_buckets()
@@ -194,23 +196,23 @@ class SelfLearningEngine:
             
             bucket.add_trade(pnl_usd, pnl_atr)
         
-        self._save_buckets()
+        # Batch database writes for better performance
+        self.pending_saves += 1
+        if self.pending_saves >= self.save_batch_size:
+            self._save_buckets()
+            self.pending_saves = 0
     
     def _save_buckets(self):
-        """Persist buckets to database."""
+        """Persist buckets to database - optimized with batch insert."""
         
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
+            # Batch insert/update for better performance
+            batch_data = []
             for bucket in self.buckets.values():
-                cursor.execute("""
-                    INSERT OR REPLACE INTO pattern_stats 
-                    (instrument, timeframe, pattern_id, regime, session,
-                     trade_count, win_count, loss_count, total_pnl_usd, total_pnl_atr,
-                     win_rate, expectancy_usd, expectancy_r, confidence, enabled, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
+                batch_data.append((
                     bucket.instrument, bucket.timeframe, bucket.pattern_id,
                     bucket. regime, bucket.session,
                     bucket.trade_count, bucket.win_count, bucket.loss_count,
@@ -219,6 +221,14 @@ class SelfLearningEngine:
                     bucket.confidence, int(bucket.enabled),
                     datetime. utcnow().isoformat()
                 ))
+            
+            cursor.executemany("""
+                INSERT OR REPLACE INTO pattern_stats 
+                (instrument, timeframe, pattern_id, regime, session,
+                 trade_count, win_count, loss_count, total_pnl_usd, total_pnl_atr,
+                 win_rate, expectancy_usd, expectancy_r, confidence, enabled, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, batch_data)
             
             conn.commit()
             conn.close()
@@ -248,3 +258,9 @@ class SelfLearningEngine:
             return self.buckets[key].enabled
         
         return True
+    
+    def flush(self):
+        """Force save any pending bucket updates."""
+        if self.pending_saves > 0:
+            self._save_buckets()
+            self.pending_saves = 0

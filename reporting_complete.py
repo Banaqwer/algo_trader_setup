@@ -319,17 +319,17 @@ Total trades: {len(trades_df)}
         fig.suptitle(f"Backtest Results:  {run_dir.name}")
         
         if len(trades_df) > 0:
+            # Pre-compute equity curve once for reuse
             trades_sorted = trades_df.sort_values("exit_time")
             equity = 5000 + trades_sorted["pnl_usd"].cumsum()
             
+            # Plot 1: Equity Curve
             axes[0, 0].plot(equity.values, linewidth=2, color="blue")
             axes[0, 0].set_title("Equity Curve")
             axes[0, 0].set_ylabel("Balance ($)")
             axes[0, 0].grid(True, alpha=0.3)
         
-        if len(trades_df) > 0:
-            trades_sorted = trades_df.sort_values("exit_time")
-            equity = 5000 + trades_sorted["pnl_usd"].cumsum()
+            # Plot 2: Drawdown (reuse equity)
             running_max = equity.expanding().max()
             drawdown = (equity - running_max) / running_max * 100
             
@@ -339,7 +339,7 @@ Total trades: {len(trades_df)}
             axes[0, 1].set_ylabel("Drawdown (%)")
             axes[0, 1].grid(True, alpha=0.3)
         
-        if len(trades_df) > 0:
+            # Plot 3: P&L Distribution
             axes[1, 0].hist(trades_df["pnl_usd"], bins=30, edgecolor="black", alpha=0.7)
             axes[1, 0].axvline(trades_df["pnl_usd"].mean(), color="red", linestyle="--", label=f"Mean: {trades_df['pnl_usd'].mean():.2f}")
             axes[1, 0].set_title("P&L Distribution")
@@ -348,7 +348,7 @@ Total trades: {len(trades_df)}
             axes[1, 0].legend()
             axes[1, 0].grid(True, alpha=0.3)
         
-        if len(trades_df) > 0:
+            # Plot 4: Trades by Timeframe
             tf_counts = trades_df["entry_timeframe"].value_counts()
             axes[1, 1].bar(tf_counts.index, tf_counts.values, color="steelblue", edgecolor="black")
             axes[1, 1].set_title("Trades by Timeframe")
