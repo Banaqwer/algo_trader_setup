@@ -25,21 +25,9 @@ from execution_engine_complete import SimulatedBroker, TradeRecord
 from risk_manager import RiskManager, AccountState
 from self_learning import SelfLearningEngine
 from adaptive_limiter import AdaptiveTradeLimiter
+from trading_utils import detect_session
 
 logger = logging.getLogger(__name__)
-
-
-def detect_session(timestamp: pd.Timestamp) -> str:
-    """Determine current session based on UTC time."""
-    hour = timestamp.hour
-    if 22 <= hour or hour < 8:
-        return "Asia"
-    elif 8 <= hour < 17:
-        return "London"
-    elif 17 <= hour < 22:
-        return "NewYork"
-    else:  
-        return "Overlap"
 
 
 class BacktesterComplete:

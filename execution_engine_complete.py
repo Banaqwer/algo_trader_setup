@@ -8,6 +8,8 @@ import pandas as pd
 import numpy as np
 import uuid
 
+from trading_utils import calculate_spread_adjustment, calculate_slippage_adjustment
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -156,24 +158,16 @@ class SimulatedBroker:
     ) -> Optional[str]:
         """Place an order."""
 
-        spread_price = (
-            spread_pips * 0.0001
-            if instrument. endswith("JPY")
-            else spread_pips * 0.00001
+        # Apply spread adjustment
+        entry_price_filled, spread_price = calculate_spread_adjustment(
+            entry_price, direction, spread_pips, instrument
         )
-        if direction > 0:
-            entry_price_filled = entry_price + spread_price / 2
-        else:
-            entry_price_filled = entry_price - spread_price / 2
+        entry_spread_cost = spread_price * units
 
-        entry_spread_cost = abs(entry_price_filled - entry_price) * units
-
-        slippage_price = entry_price * slippage_bps / 10000
-        if direction > 0:
-            entry_price_filled += slippage_price
-        else:
-            entry_price_filled -= slippage_price
-
+        # Apply slippage adjustment
+        entry_price_filled, slippage_price = calculate_slippage_adjustment(
+            entry_price_filled, direction, slippage_bps
+        )
         entry_slippage_cost = slippage_price * abs(units)
 
         trade_id = str(uuid.uuid4())[:8]
@@ -260,21 +254,17 @@ class SimulatedBroker:
 
         open_trade = self.open_trades. pop(trade_id)
 
-        spread_price = 1.5 * 0.00001
-        if open_trade.direction > 0:
-            exit_price_filled = exit_price - spread_price / 2
-        else:
-            exit_price_filled = exit_price + spread_price / 2
+        # Apply spread adjustment (note: direction reversed for exit)
+        exit_price_filled, spread_price = calculate_spread_adjustment(
+            exit_price, -open_trade.direction, 1.5, open_trade.instrument
+        )
+        exit_spread_cost = spread_price * abs(open_trade.units)
 
-        exit_spread_cost = abs(exit_price_filled - exit_price) * abs(open_trade.units)
-
+        # Apply slippage adjustment (note: direction reversed for exit)
         slippage_bps = self.config.get("slippage_bps", 1.5)
-        slippage_price = exit_price * slippage_bps / 10000
-        if open_trade.direction > 0:
-            exit_price_filled -= slippage_price
-        else:
-            exit_price_filled += slippage_price
-
+        exit_price_filled, slippage_price = calculate_slippage_adjustment(
+            exit_price_filled, -open_trade.direction, slippage_bps
+        )
         exit_slippage_cost = slippage_price * abs(open_trade.units)
 
         if open_trade.direction > 0:
