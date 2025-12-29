@@ -33,11 +33,9 @@ jobs:
       run: python backtester_complete.py
     
     - name: Upload results
-      if: always()
+      if:  always()
       uses: actions/upload-artifact@v4
       with:
-        name: backtest-results
-        path: |
-          results/
-          logs/
+        name:  backtest-results
+        path:  artifacts/
         retention-days: 30
