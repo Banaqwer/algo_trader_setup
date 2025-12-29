@@ -1,5 +1,4 @@
 data/
-artifacts/
 logs/
 . env
 .env.local
