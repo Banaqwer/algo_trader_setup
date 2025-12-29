@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 import numpy as np
-from patterns.base import Pattern, PatternSignal
+from patterns.base import Pattern, PatternSignal, validate_features_length
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class VolatilityCompressionPattern(Pattern):
                   features: pd. DataFrame, context: dict) -> PatternSignal:
         """Detect compression and expansion."""
         
-        if features.empty:
+        if not validate_features_length(features, 1):
             return None
         
         atr_14 = self._get_latest_value(features, "atr_14")

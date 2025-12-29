@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 import numpy as np
-from patterns.base import Pattern, PatternSignal
+from patterns.base import Pattern, PatternSignal, validate_features_length, get_price_extremes
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class LiquiditySweepPattern(Pattern):
                   features: pd. DataFrame, context: dict) -> PatternSignal:
         """Detect sweep and reversal."""
         
-        if len(features) < 30:
+        if not validate_features_length(features, 30):
             return None
         
         lookback = 20
