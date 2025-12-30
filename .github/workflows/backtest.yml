@@ -30,7 +30,7 @@ jobs:
       env:
         OANDA_ACCESS_TOKEN: ${{ secrets. OANDA_ACCESS_TOKEN }}
         OANDA_ACCOUNT_ID: ${{ secrets. OANDA_ACCOUNT_ID }}
-      run: python backtester_complete.py --instruments EUR_USD,GBP_USD,AUD_USD --timeframes M5,M15,H1,H4,M30
+      run: python backtester_complete.py --instruments EUR_USD,GBP_USD,AUD_USD --timeframes M5,M15,H1,H4,D
     
     - name: Upload results
       if: always()
