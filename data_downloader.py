@@ -22,14 +22,14 @@ class DataDownloader:
         
         api_status = "✓ SET" if self.api_key else "✗ NOT SET"
         logger.info(
-            f"DataDownloader initialized:  data_dir={self.data_dir}, API_KEY {api_status}"
+            f"DataDownloader initialized:   data_dir={self.data_dir}, API_KEY {api_status}"
         )
     
     def download(self, instrument: str, timeframe: str, years: int = 5):
         """Download historical candles from OANDA."""
         
         if not self.api_key:
-            logger.warning("OANDA_ACCESS_TOKEN not set.  Skipping download.")
+            logger.warning("OANDA_ACCESS_TOKEN not set.   Skipping download.")
             return False
         
         try:
@@ -40,7 +40,7 @@ class DataDownloader:
             
             candles = self._fetch_candles(instrument, timeframe, start_date, end_date)
             
-            if not candles:
+            if not candles: 
                 logger.warning(f"No candles received for {instrument} {timeframe}")
                 return False
             
@@ -81,13 +81,13 @@ class DataDownloader:
             try:
                 url = f"{self.base_url}/v3/instruments/{instrument}/candles"
                 params = {
-                    "price":  "MBA",
+                    "price":   "MBA",
                     "granularity": timeframe,
-                    "from": current.isoformat() + "Z",
+                    "from":  current.isoformat() + "Z",
                     "to": chunk_end.isoformat() + "Z",
                 }
                 headers = {
-                    "Authorization": f"Bearer {self.api_key}",
+                    "Authorization":  f"Bearer {self.api_key}",
                     "Accept-Datetime-Format": "UNIX",
                 }
                 
@@ -97,7 +97,7 @@ class DataDownloader:
                 
                 if response.status_code == 200:
                     data = response.json()
-                    if "candles" in data:
+                    if "candles" in data: 
                         for candle in data["candles"]:
                             candles.append({
                                 "time": pd.to_datetime(float(candle["time"]), unit='s'),
@@ -107,7 +107,7 @@ class DataDownloader:
                                 "close":  float(candle["mid"]["c"]),
                                 "volume":  int(candle. get("volume", 0)),
                             })
-                        logger.debug(
+                        logger. debug(
                             f"  {instrument} {timeframe} {current.date()}: "
                             f"{len(candles)} total"
                         )
@@ -117,9 +117,9 @@ class DataDownloader:
                         "Check API_KEY and ACCOUNT_ID."
                     )
                     return []
-                else:
+                else: 
                     logger.warning(
-                        f"API returned {response.status_code}:  {response.text}"
+                        f"API returned {response. status_code}:  {response.text}"
                     )
                     
             except Exception as e:
@@ -141,7 +141,7 @@ class DataDownloader:
             "M30": 30,
             "H1": 60,
             "H2": 120,
-            "H3": 180,
+            "H3":  180,
             "H4": 240,
             "H6": 360,
             "H8": 480,
@@ -158,7 +158,7 @@ class DataDownloader:
     
     @staticmethod
     def load_candles(
-        instrument: str,
+        instrument:  str,
         timeframe: str,
         start_date,
         end_date,
@@ -176,11 +176,27 @@ class DataDownloader:
             df = pd.read_parquet(cache_file)
             df["time"] = pd.to_datetime(df["time"])
             
+            # Convert string dates to datetime. date if provided
+            if start_date:
+                start_dt = datetime.fromisoformat(start_date).date() if isinstance(start_date, str) else start_date
+            else:
+                start_dt = None
+                
+            if end_date: 
+                end_dt = datetime.fromisoformat(end_date).date() if isinstance(end_date, str) else end_date
+            else:
+                end_dt = None
+            
             # Filter by date range
-            df = df[
-                (df["time"]. dt.date >= start_date) & 
-                (df["time"].dt.date <= end_date)
-            ]
+            if start_dt and end_dt: 
+                df = df[
+                    (df["time"]. dt.date >= start_dt) & 
+                    (df["time"].dt.date <= end_dt)
+                ]
+            elif start_dt:
+                df = df[df["time"].dt. date >= start_dt]
+            elif end_dt:
+                df = df[df["time"].dt.date <= end_dt]
             
             logger.debug(
                 f"Loaded {len(df)} candles for {instrument} {timeframe}"
