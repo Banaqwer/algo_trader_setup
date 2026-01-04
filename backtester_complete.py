@@ -218,8 +218,31 @@ class BacktesterComplete:
         
         # Pre-extract time arrays for faster lookup
         time_cache = {}
+        index_cache = {}
         for key, df in data_cache.items():
             time_cache[key] = df["time"].values
+            index_cache[key] = 0
+
+        def advance_index(key, current_time):
+            """Advance cached index to latest position at or before current_time."""
+            time_arr = time_cache.get(key)
+            if time_arr is None or len(time_arr) == 0:
+                return -1, time_arr
+
+            idx = index_cache.get(key, 0)
+            if idx >= len(time_arr) or idx < 0:
+                idx = 0
+
+            if time_arr[idx] > current_time:
+                idx = np.searchsorted(time_arr, current_time, side="right") - 1
+                if idx < 0:
+                    return -1, time_arr
+
+            while idx + 1 < len(time_arr) and time_arr[idx + 1] <= current_time:
+                idx += 1
+
+            index_cache[key] = idx
+            return idx, time_arr
 
         for idx in range(warmup_bars, len(base_data)):
 
@@ -256,12 +279,13 @@ class BacktesterComplete:
                         if key in data_cache:
                             # Use pre-computed time array for faster filtering
                             df = data_cache[key]
-                            time_arr = time_cache[key]
-                            mask = time_arr <= current_time
-                            if mask.any():
-                                tf_subset = df[mask]
-                                if len(tf_subset) > 0:
-                                    features_dict[tf] = tf_subset
+                            last_idx, time_arr = advance_index(key, current_time)
+                            if last_idx == -1:
+                                continue
+
+                            tf_subset = df.iloc[: last_idx + 1]
+                            if len(tf_subset) > 0:
+                                features_dict[tf] = tf_subset
 
                     if not features_dict:
                         continue
@@ -395,13 +419,12 @@ class BacktesterComplete:
                 if key not in data_cache:
                     continue
 
-                inst_data = data_cache[key]
-                # Use loc for faster single-row lookup
-                current_price_data = inst_data.loc[inst_data["time"] == current_time, "close"]
-                if len(current_price_data) == 0:
+                price_idx, time_arr = advance_index(key, current_time)
+                if price_idx == -1 or time_arr is None:
                     continue
 
-                current_price = float(current_price_data.iloc[0])
+                inst_data = data_cache[key]
+                current_price = float(inst_data["close"].iloc[price_idx])
 
                 # Only process trades for this instrument
                 for trade in list(self.broker.open_trades.values()):
