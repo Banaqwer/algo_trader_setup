@@ -223,6 +223,24 @@ class BacktesterComplete:
             time_cache[key] = df["time"].values
             index_cache[key] = 0
 
+        def advance_index(key, current_time):
+            """Advance cached index to latest position at or before current_time."""
+            time_arr = time_cache.get(key)
+            if time_arr is None or len(time_arr) == 0:
+                return -1, time_arr
+
+            idx = index_cache.get(key, 0)
+            if idx >= len(time_arr):
+                idx = len(time_arr) - 1
+            if idx < 0 or time_arr[idx] > current_time:
+                return -1, time_arr
+
+            while idx + 1 < len(time_arr) and time_arr[idx + 1] <= current_time:
+                idx += 1
+
+            index_cache[key] = idx
+            return idx, time_arr
+
         for idx in range(warmup_bars, len(base_data)):
 
             current_time = base_data.iloc[idx]["time"]
@@ -258,26 +276,9 @@ class BacktesterComplete:
                         if key in data_cache:
                             # Use pre-computed time array for faster filtering
                             df = data_cache[key]
-                            time_arr = time_cache[key]
-                            if len(time_arr) == 0:
+                            last_idx, time_arr = advance_index(key, current_time)
+                            if last_idx == -1:
                                 continue
-
-                            last_idx = index_cache[key]
-                            if last_idx >= len(time_arr):
-                                last_idx = len(time_arr) - 1
-
-                            if last_idx < 0:
-                                continue
-
-                            if time_arr[last_idx] > current_time:
-                                continue
-
-                            while (
-                                last_idx + 1 < len(time_arr)
-                                and time_arr[last_idx + 1] <= current_time
-                            ):
-                                last_idx += 1
-                            index_cache[key] = last_idx
 
                             tf_subset = df.iloc[: last_idx + 1]
                             if len(tf_subset) > 0:
@@ -415,28 +416,11 @@ class BacktesterComplete:
                 if key not in data_cache:
                     continue
 
-                time_arr = time_cache.get(key)
-                if time_arr is None or len(time_arr) == 0:
-                    continue
-
-                price_idx = index_cache.get(key, 0)
-                if price_idx >= len(time_arr):
-                    price_idx = len(time_arr) - 1
-
-                if price_idx < 0:
-                    continue
-
-                while (
-                    price_idx + 1 < len(time_arr)
-                    and time_arr[price_idx + 1] <= current_time
-                ):
-                    price_idx += 1
-
-                if time_arr[price_idx] > current_time:
+                price_idx, time_arr = advance_index(key, current_time)
+                if price_idx == -1 or time_arr is None:
                     continue
 
                 inst_data = data_cache[key]
-                index_cache[key] = price_idx
                 current_price = float(inst_data["close"].iloc[price_idx])
 
                 # Only process trades for this instrument
