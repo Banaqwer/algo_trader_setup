@@ -5,8 +5,7 @@ import logging
 from pathlib import Path
 from typing import Optional, List
 from dotenv import load_dotenv
-from pydantic import Field, validator, root_validator
-from pydantic_settings import BaseSettings
+from pydantic import BaseSettings, Field, validator, root_validator
 import yaml
 
 # Load .env file

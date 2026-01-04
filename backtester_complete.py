@@ -218,8 +218,10 @@ class BacktesterComplete:
         
         # Pre-extract time arrays for faster lookup
         time_cache = {}
+        index_cache = {}
         for key, df in data_cache.items():
             time_cache[key] = df["time"].values
+            index_cache[key] = 0
 
         for idx in range(warmup_bars, len(base_data)):
 
@@ -257,9 +259,19 @@ class BacktesterComplete:
                             # Use pre-computed time array for faster filtering
                             df = data_cache[key]
                             time_arr = time_cache[key]
-                            mask = time_arr <= current_time
-                            if mask.any():
-                                tf_subset = df[mask]
+                            if len(time_arr) == 0:
+                                continue
+
+                            last_idx = index_cache[key]
+                            while (
+                                last_idx + 1 < len(time_arr)
+                                and time_arr[last_idx + 1] <= current_time
+                            ):
+                                last_idx += 1
+                            index_cache[key] = last_idx
+
+                            if last_idx >= 0 and time_arr[last_idx] <= current_time:
+                                tf_subset = df.iloc[: last_idx + 1]
                                 if len(tf_subset) > 0:
                                     features_dict[tf] = tf_subset
 
@@ -395,13 +407,17 @@ class BacktesterComplete:
                 if key not in data_cache:
                     continue
 
-                inst_data = data_cache[key]
-                # Use loc for faster single-row lookup
-                current_price_data = inst_data.loc[inst_data["time"] == current_time, "close"]
-                if len(current_price_data) == 0:
+                time_arr = time_cache.get(key)
+                price_idx = index_cache.get(key, -1)
+
+                if time_arr is None or price_idx < 0:
                     continue
 
-                current_price = float(current_price_data.iloc[0])
+                if time_arr[price_idx] != current_time:
+                    continue
+
+                inst_data = data_cache[key]
+                current_price = float(inst_data["close"].iloc[price_idx])
 
                 # Only process trades for this instrument
                 for trade in list(self.broker.open_trades.values()):
