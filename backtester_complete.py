@@ -421,11 +421,20 @@ class BacktesterComplete:
                     continue
 
                 price_idx = index_cache.get(key, 0)
-
-                if price_idx >= len(time_arr) or time_arr[price_idx] > current_time:
-                    continue
+                if price_idx >= len(time_arr):
+                    price_idx = len(time_arr) - 1
 
                 if price_idx < 0:
+                    continue
+
+                while (
+                    price_idx + 1 < len(time_arr)
+                    and time_arr[price_idx + 1] <= current_time
+                ):
+                    price_idx += 1
+
+                if time_arr[price_idx] > current_time:
+                    index_cache[key] = price_idx
                     continue
 
                 inst_data = data_cache[key]
