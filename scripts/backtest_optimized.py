@@ -132,15 +132,15 @@ class OptimizedBacktester:
                             trade_count += 1
                             
                             # Log trade
-                            self.logger. info(
+                            self.logger.info(
                                 f"Trade #{trade_count} | {instrument} | "
                                 f"Type: {trade['type']} | "
-                                f"Entry: {trade['entry']:. 5f} | "
+                                f"Entry: {trade['entry']:.5f} | "
                                 f"SL: {trade['stop_loss']:.5f} | "
                                 f"TP: {trade['take_profit']:.5f}"
                             )
             
-            self.logger.info(f"Completed {instrument}:  {trade_count} signals generated")
+            self.logger.info(f"Completed {instrument}: {trade_count} signals generated")
             return trade_count
             
         except Exception as e:

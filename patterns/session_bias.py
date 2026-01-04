@@ -16,7 +16,7 @@ class SessionBiasPattern(Pattern):
         """Update session statistics."""
         self.session_stats[key] = (win_rate, expectancy, count)
     
-    def recognize(self, instrument: str, timeframe: str, 
+    def recognize(self, instrument: str, timeframe: str,
                   features: pd.DataFrame, context: dict) -> PatternSignal:
         """Detect session-biased setups."""
         

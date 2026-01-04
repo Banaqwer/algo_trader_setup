@@ -22,7 +22,7 @@ class DataDownloader:
         
         api_status = "✓ SET" if self.api_key else "✗ NOT SET"
         logger.info(
-            f"DataDownloader initialized:   data_dir={self.data_dir}, API_KEY {api_status}"
+            f"DataDownloader initialized: data_dir={self.data_dir}, API_KEY {api_status}"
         )
     
     def download(self, instrument: str, timeframe: str, years: int = 5):

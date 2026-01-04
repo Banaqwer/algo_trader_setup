@@ -20,7 +20,7 @@ from patterns import (
     FailedBreakoutPattern,
 )
 from pattern_aggregation import PatternAggregator
-from models.  model_manager import model_manager
+from models.model_manager import model_manager
 from execution_engine_complete import SimulatedBroker, TradeRecord
 from risk_manager import RiskManager, AccountState
 from self_learning import SelfLearningEngine
@@ -64,8 +64,8 @@ class BacktesterComplete:
             },
         )
 
-        self.broker = SimulatedBroker(self.account.  current_balance, settings.  dict())
-        self.learning_engine = SelfLearningEngine(settings.  data_dir)
+        self.broker = SimulatedBroker(self.account.current_balance, settings.dict())
+        self.learning_engine = SelfLearningEngine(settings.data_dir)
         self.adaptive_limiter = AdaptiveTradeLimiter(settings)
 
         self.daily_trade_count = {}
@@ -99,22 +99,22 @@ class BacktesterComplete:
             logger.info("Running event loop...")
             trades = self._run_event_loop(data_cache, instruments, timeframes)
 
-            logger.  info("Saving results...")
+            logger.info("Saving results...")
             self._save_results(run_id, run_dir, trades, data_cache)
             
             # Flush any pending learning engine updates
             if self.settings.enable_learning_updates:
                 self.learning_engine.flush()
 
-            logger.  info(
-                f"Backtest complete:   {len(trades)} trades, "
-                f"P&L: ${self.broker.balance - 5000:+. 2f}"
+            logger.info(
+                f"Backtest complete: {len(trades)} trades, "
+                f"P&L: ${self.broker.balance - 5000:+.2f}"
             )
 
             return run_id
 
         except Exception as e:
-            logger.  exception(f"Backtest failed:  {e}")
+            logger.exception(f"Backtest failed: {e}")
             raise
 
     def _load_data(
@@ -143,23 +143,23 @@ class BacktesterComplete:
             end_dt = datetime.utcnow().date()
 
         # Handle both OneDrive and local paths
-        data_dir = Path(self. settings.data_dir).resolve()
+        data_dir = Path(self.settings.data_dir).resolve()
         logger.info(f"Data directory: {data_dir}")
 
         # Check if directory exists
         if not data_dir.exists():
             logger.error(f"Data directory does not exist: {data_dir}")
-            raise ValueError(f"Data directory not found:  {data_dir}")
+            raise ValueError(f"Data directory not found: {data_dir}")
 
         for instrument in instruments:
             for timeframe in timeframes:
                 try:
                     cache_file = data_dir / f"{instrument}_{timeframe}.parquet"
 
-                    logger.debug(f"Looking for:  {cache_file}")
+                    logger.debug(f"Looking for: {cache_file}")
 
                     if not cache_file.exists():
-                        logger.warning(f"Cache not found:  {cache_file}")
+                        logger.warning(f"Cache not found: {cache_file}")
                         continue
 
                     # Load raw OHLCV data
@@ -177,8 +177,8 @@ class BacktesterComplete:
 
                     # Filter by date range
                     df = df[
-                        (df["time"]. dt.date >= start_dt)
-                        & (df["time"].dt. date <= end_dt)
+                        (df["time"].dt.date >= start_dt)
+                        & (df["time"].dt.date <= end_dt)
                     ]
 
                     if len(df) == 0:
@@ -187,14 +187,14 @@ class BacktesterComplete:
 
                     data_cache[(instrument, timeframe)] = df
                     logger.info(
-                        f"  ✓ {instrument} {timeframe}:  {len(df)} candles"
+                        f"  ✓ {instrument} {timeframe}: {len(df)} candles"
                     )
 
                 except Exception as e:
-                    logger. error(f"  ✗ {instrument} {timeframe}:  {e}")
+                    logger.error(f"  ✗ {instrument} {timeframe}: {e}")
 
         if not data_cache:
-            raise ValueError(f"No data loaded - check data directory:   {data_dir}")
+            raise ValueError(f"No data loaded - check data directory: {data_dir}")
 
         logger.info(f"Total loaded: {len(data_cache)} instrument-timeframe pairs")
         return data_cache
@@ -243,7 +243,7 @@ class BacktesterComplete:
                 self.account.reset_weekly(current_time)
                 self.last_weekly_reset = current_time
 
-            max_trades_today = self.adaptive_limiter.  calculate_max_trades(
+            max_trades_today = self.adaptive_limiter.calculate_max_trades(
                 self.account, self.closed_trades
             )
 
@@ -288,21 +288,21 @@ class BacktesterComplete:
                         try:
                             sig = pattern.recognize(instrument, exec_tf, features, context)
                             if sig is not None:
-                                signals.  append(sig)
+                                signals.append(sig)
                         except Exception as e:
-                            logger.debug(f"Pattern {pattern.  pattern_id} error: {e}")
+                            logger.debug(f"Pattern {pattern.pattern_id} error: {e}")
 
                     if not signals:
                         continue
 
                     agg_result = self.aggregator.aggregate(signals, context)
 
-                    if not agg_result.  trade_allowed or agg_result.direction == 0:
+                    if not agg_result.trade_allowed or agg_result.direction == 0:
                         continue
 
                     trades_today = self.daily_trade_count.get(current_date, 0)
-                    allowed, reason = self.adaptive_limiter.  should_take_trade(
-                        trades_today, agg_result.  confidence, max_trades_today
+                    allowed, reason = self.adaptive_limiter.should_take_trade(
+                        trades_today, agg_result.confidence, max_trades_today
                     )
 
                     if not allowed: 
@@ -313,14 +313,14 @@ class BacktesterComplete:
                         entry_price = float(features["close"].iloc[-1])
 
                         # Check if atr_14 exists
-                        if "atr_14" in features. columns:
-                            atr_14 = float(features["atr_14"]. iloc[-1])
+                        if "atr_14" in features.columns:
+                            atr_14 = float(features["atr_14"].iloc[-1])
                         elif "atr" in features.columns:
                             atr_14 = float(features["atr"].iloc[-1])
                         else:
-                            # Fallback:   calculate simple ATR from high-low
+                            # Fallback: calculate simple ATR from high-low
                             atr_14 = float(
-                                (features["high"].iloc[-1] - features["low"]. iloc[-1]) * 1.5
+                                (features["high"].iloc[-1] - features["low"].iloc[-1]) * 1.5
                             )
 
                         if atr_14 == 0 or atr_14 < 0.0001:
@@ -329,11 +329,11 @@ class BacktesterComplete:
                         sl_price, tp_price, sl_atr, tp_atr = self._calculate_sl_tp(
                             instrument,
                             exec_tf,
-                            agg_result.  direction,
+                            agg_result.direction,
                             entry_price,
                             atr_14,
                             agg_result.contributing_patterns[0]
-                            if agg_result. contributing_patterns
+                            if agg_result.contributing_patterns
                             else "unknown",
                         )
 
@@ -349,10 +349,10 @@ class BacktesterComplete:
                         )
 
                         if not allowed:
-                            logger.debug(f"Trade rejected:   {reason}")
+                            logger.debug(f"Trade rejected: {reason}")
                             continue
 
-                        trade_id = self.  broker.place_order(
+                        trade_id = self.broker.place_order(
                             instrument=instrument,
                             direction=agg_result.direction,
                             units=units,
@@ -378,11 +378,11 @@ class BacktesterComplete:
                             self.account.add_position(
                                 trade_id, instrument, units, entry_price
                             )
-                            self.  daily_trade_count[current_date] = (
+                            self.daily_trade_count[current_date] = (
                                 self.daily_trade_count.get(current_date, 0) + 1
                             )
                             logger.info(
-                                f"Trade #{self.daily_trade_count[current_date]}/{max_trades_today}:  "
+                                f"Trade #{self.daily_trade_count[current_date]}/{max_trades_today}: "
                                 f"{instrument} {agg_result.direction:+d} @ {entry_price:.5f}"
                             )
 
@@ -405,9 +405,9 @@ class BacktesterComplete:
 
                 # Only process trades for this instrument
                 for trade in list(self.broker.open_trades.values()):
-                    if trade.  instrument == instrument: 
-                        result = self.  broker.update_price(
-                            trade. trade_id, current_price, current_time
+                    if trade.instrument == instrument:
+                        result = self.broker.update_price(
+                            trade.trade_id, current_price, current_time
                         )
 
                         if result:
@@ -419,15 +419,15 @@ class BacktesterComplete:
                                 trade_record.pnl_usd,
                             )
 
-                            self.account. update_equity(self.broker.balance, current_time)
+                            self.account.update_equity(self.broker.balance, current_time)
                             self.closed_trades.append(trade_record)
 
                             if self.settings.enable_learning_updates:
                                 self.learning_engine.record_trade(
                                     trade_record,
                                     trade_record.patterns_triggered,
-                                    context.  get("volatility_regime", "unknown"),
-                                    context. get("session", "unknown"),
+                                    context.get("volatility_regime", "unknown"),
+                                    context.get("session", "unknown"),
                                 )
 
         return self.broker.closed_trades
@@ -437,7 +437,7 @@ class BacktesterComplete:
     ) -> Dict:
         """Build market context snapshot."""
 
-        session = detect_session(features.  iloc[-1]["time"])
+        session = detect_session(features.iloc[-1]["time"])
 
         htf_trend = 0
         if "H4" in features_dict: 
@@ -451,10 +451,10 @@ class BacktesterComplete:
                         1 if ema_20 > ema_50 else -1 if ema_20 < ema_50 else 0
                     )
                 else:
-                    # Fallback:   use close price with SMA
+                    # Fallback: use close price with SMA
                     close_prices = h4_features["close"]
                     sma_20 = close_prices.tail(20).mean()
-                    sma_50 = close_prices.  tail(50).mean()
+                    sma_50 = close_prices.tail(50).mean()
                     htf_trend = 1 if sma_20 > sma_50 else -1 if sma_20 < sma_50 else 0
 
         atr_pct = (
@@ -474,9 +474,9 @@ class BacktesterComplete:
             key = "D" if "D" in features_dict else "H4"
             d1_features = features_dict[key]
             if d1_features is not None and len(d1_features) > 0:
-                close = features.  iloc[-1]["close"]
-                d1_high = d1_features["high"]. iloc[-1]
-                d1_low = d1_features["low"]. iloc[-1]
+                close = features.iloc[-1]["close"]
+                d1_high = d1_features["high"].iloc[-1]
+                d1_low = d1_features["low"].iloc[-1]
                 d1_range = d1_high - d1_low
                 if d1_range > 0:
                     htf_range_pos = (close - d1_low) / d1_range
@@ -485,7 +485,7 @@ class BacktesterComplete:
             "session": session,
             "htf_trend": htf_trend,
             "volatility_regime": vol_regime,
-            "current_drawdown": self.  account.current_drawdown,
+            "current_drawdown": self.account.current_drawdown,
             "spread_pips": 1.5,
             "liquidity_state": "normal",
             "htf_range_position": htf_range_pos,
@@ -551,7 +551,7 @@ class BacktesterComplete:
             json.dump(self.account.to_dict(), f, indent=2)
 
         with open(run_dir / "settings.json", "w") as f:
-            json.dump(self.settings.  dict(), f, indent=2, default=str)
+            json.dump(self.settings.dict(), f, indent=2, default=str)
 
         metrics = self._compute_metrics(trades)
         with open(run_dir / "metrics.json", "w") as f:
@@ -580,12 +580,12 @@ class BacktesterComplete:
 
         total_pnl = trades_df["pnl_usd"].sum()
         avg_pnl = total_pnl / len(trades_df) if len(trades_df) > 0 else 0
-        expectancy_r = trades_df["pnl_atr"]. mean()
+        expectancy_r = trades_df["pnl_atr"].mean()
 
         return {
             "total_trades": len(trades_df),
             "wins": int(wins),
-            "losses":   int(losses),
+            "losses": int(losses),
             "win_rate": float(win_rate),
             "total_pnl_usd": float(total_pnl),
             "avg_pnl_per_trade": float(avg_pnl),

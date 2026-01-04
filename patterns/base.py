@@ -68,7 +68,7 @@ class Pattern:
         self.pattern_id = pattern_id
         self.logger = logging.getLogger(f"{__name__}.{pattern_id}")
     
-    def recognize(self, instrument: str, timeframe: str, 
+    def recognize(self, instrument: str, timeframe: str,
                   features: pd.DataFrame, context: dict) -> Optional[PatternSignal]:
         """Override in subclasses."""
         pass

@@ -11,8 +11,8 @@ class VolatilityCompressionPattern(Pattern):
     def __init__(self):
         super().__init__("VOL_COMPRESSION")
     
-    def recognize(self, instrument: str, timeframe: str, 
-                  features: pd. DataFrame, context: dict) -> PatternSignal:
+    def recognize(self, instrument: str, timeframe: str,
+                  features: pd.DataFrame, context: dict) -> PatternSignal:
         """Detect compression and expansion."""
         
         if not validate_features_length(features, 1):

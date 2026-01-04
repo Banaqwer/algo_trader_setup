@@ -11,7 +11,7 @@ class FailedBreakoutPattern(Pattern):
     def __init__(self):
         super().__init__("FAILED_BREAKOUT")
     
-    def recognize(self, instrument: str, timeframe: str, 
+    def recognize(self, instrument: str, timeframe: str,
                   features: pd.DataFrame, context: dict) -> PatternSignal:
         """Detect failed breakout setup."""
         
