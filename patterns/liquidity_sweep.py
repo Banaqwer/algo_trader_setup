@@ -11,8 +11,8 @@ class LiquiditySweepPattern(Pattern):
     def __init__(self):
         super().__init__("LIQUIDITY_SWEEP")
     
-    def recognize(self, instrument: str, timeframe: str, 
-                  features: pd. DataFrame, context: dict) -> PatternSignal:
+    def recognize(self, instrument: str, timeframe: str,
+                  features: pd.DataFrame, context: dict) -> PatternSignal:
         """Detect sweep and reversal."""
         
         if not validate_features_length(features, 30):

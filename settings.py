@@ -9,7 +9,7 @@ from pydantic import Field, validator, root_validator
 from pydantic_settings import BaseSettings
 import yaml
 
-# Load .  env file
+# Load .env file
 load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)

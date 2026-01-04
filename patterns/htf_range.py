@@ -11,7 +11,7 @@ class HTFRangePattern(Pattern):
     def __init__(self):
         super().__init__("HTF_RANGE")
     
-    def recognize(self, instrument: str, timeframe: str, 
+    def recognize(self, instrument: str, timeframe: str,
                   features: pd.DataFrame, context: dict) -> PatternSignal:
         """Evaluate HTF range position."""
         

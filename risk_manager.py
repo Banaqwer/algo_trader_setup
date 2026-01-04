@@ -169,8 +169,8 @@ class RiskManager:
         notional = abs(units) * entry_price
         leverage = notional / self.account.current_balance if self.account.current_balance > 0 else 999
         
-        if leverage > self. max_leverage:
-            return False, f"Leverage ({leverage:. 2f}) exceeds max ({self.max_leverage})"
+        if leverage > self.max_leverage:
+            return False, f"Leverage ({leverage:.2f}) exceeds max ({self.max_leverage})"
         
         return True, "OK"
     

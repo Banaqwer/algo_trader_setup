@@ -20,7 +20,7 @@ class CorrelationDivergencePattern(Pattern):
         "USD_JPY": ("USD_CAD", 0.70),
     }
     
-    def recognize(self, instrument: str, timeframe: str, 
+    def recognize(self, instrument: str, timeframe: str,
                   features: pd.DataFrame, context: dict) -> PatternSignal:
         """Detect correlation divergence."""
         
