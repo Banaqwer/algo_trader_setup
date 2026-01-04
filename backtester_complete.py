@@ -263,6 +263,9 @@ class BacktesterComplete:
                                 continue
 
                             last_idx = index_cache[key]
+                            if time_arr[last_idx] > current_time:
+                                continue
+
                             while (
                                 last_idx + 1 < len(time_arr)
                                 and time_arr[last_idx + 1] <= current_time
@@ -270,10 +273,9 @@ class BacktesterComplete:
                                 last_idx += 1
                             index_cache[key] = last_idx
 
-                            if last_idx >= 0 and time_arr[last_idx] <= current_time:
-                                tf_subset = df.iloc[: last_idx + 1]
-                                if len(tf_subset) > 0:
-                                    features_dict[tf] = tf_subset
+                            tf_subset = df.iloc[: last_idx + 1]
+                            if len(tf_subset) > 0:
+                                features_dict[tf] = tf_subset
 
                     if not features_dict:
                         continue
@@ -413,7 +415,7 @@ class BacktesterComplete:
                 if time_arr is None or price_idx < 0:
                     continue
 
-                if time_arr[price_idx] != current_time:
+                if time_arr[price_idx] > current_time:
                     continue
 
                 inst_data = data_cache[key]
