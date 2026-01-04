@@ -410,15 +410,19 @@ class BacktesterComplete:
                     continue
 
                 time_arr = time_cache.get(key)
-                price_idx = index_cache.get(key, -1)
-
-                if time_arr is None or price_idx < 0:
+                if time_arr is None or len(time_arr) == 0:
                     continue
 
+                price_idx = min(index_cache.get(key, 0), len(time_arr) - 1)
+
                 if time_arr[price_idx] > current_time:
+                    price_idx = np.searchsorted(time_arr, current_time, side="right") - 1
+
+                if price_idx < 0:
                     continue
 
                 inst_data = data_cache[key]
+                index_cache[key] = price_idx
                 current_price = float(inst_data["close"].iloc[price_idx])
 
                 # Only process trades for this instrument
