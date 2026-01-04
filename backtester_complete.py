@@ -270,7 +270,6 @@ class BacktesterComplete:
                                 continue
 
                             if time_arr[last_idx] > current_time:
-                                index_cache[key] = last_idx
                                 continue
 
                             while (
@@ -434,7 +433,6 @@ class BacktesterComplete:
                     price_idx += 1
 
                 if time_arr[price_idx] > current_time:
-                    index_cache[key] = price_idx
                     continue
 
                 inst_data = data_cache[key]
