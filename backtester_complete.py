@@ -230,10 +230,13 @@ class BacktesterComplete:
                 return -1, time_arr
 
             idx = index_cache.get(key, 0)
-            if idx >= len(time_arr):
-                idx = len(time_arr) - 1
-            if idx < 0 or time_arr[idx] > current_time:
-                return -1, time_arr
+            if idx >= len(time_arr) or idx < 0:
+                idx = 0
+
+            if time_arr[idx] > current_time:
+                idx = np.searchsorted(time_arr, current_time, side="right") - 1
+                if idx < 0:
+                    return -1, time_arr
 
             while idx + 1 < len(time_arr) and time_arr[idx + 1] <= current_time:
                 idx += 1
