@@ -263,6 +263,9 @@ class BacktesterComplete:
                                 continue
 
                             last_idx = index_cache[key]
+                            if last_idx >= len(time_arr):
+                                last_idx = len(time_arr) - 1
+
                             if time_arr[last_idx] > current_time:
                                 continue
 
@@ -416,8 +419,7 @@ class BacktesterComplete:
                 price_idx = index_cache.get(key, 0)
 
                 if price_idx >= len(time_arr) or time_arr[price_idx] > current_time:
-                    price_idx = np.searchsorted(time_arr, current_time, side="right") - 1
-                    index_cache[key] = price_idx
+                    continue
 
                 if price_idx < 0:
                     continue
