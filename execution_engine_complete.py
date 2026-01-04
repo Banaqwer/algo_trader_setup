@@ -198,7 +198,7 @@ class SimulatedBroker:
         self.total_trades += 1
 
         logger.info(
-            f"Trade {trade_id} opened: {instrument} {direction: +d} @ {entry_price_filled:.5f}"
+            f"Trade {trade_id} opened: {instrument} {direction:+d} @ {entry_price_filled:.5f}"
         )
 
         return trade_id
