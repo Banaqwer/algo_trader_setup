@@ -266,7 +266,11 @@ class BacktesterComplete:
                             if last_idx >= len(time_arr):
                                 last_idx = len(time_arr) - 1
 
+                            if last_idx < 0:
+                                continue
+
                             if time_arr[last_idx] > current_time:
+                                index_cache[key] = last_idx
                                 continue
 
                             while (
@@ -425,6 +429,7 @@ class BacktesterComplete:
                     continue
 
                 inst_data = data_cache[key]
+                index_cache[key] = price_idx
                 current_price = float(inst_data["close"].iloc[price_idx])
 
                 # Only process trades for this instrument
