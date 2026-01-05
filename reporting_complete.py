@@ -209,6 +209,12 @@ class ReportGenerator:
         logger.info(f"Generating report for run_id={run_id}")
         
         trades_file = run_dir / "trades. parquet"
+        diagnostics_file = run_dir / "diagnostics.json"
+        diagnostics = None
+        if diagnostics_file.exists():
+            with open(diagnostics_file, "r") as f:
+                diagnostics = json.load(f)
+
         if trades_file.exists():
             trades_df = pd.read_parquet(trades_file)
         else:
@@ -220,12 +226,12 @@ class ReportGenerator:
             with open(run_dir / "metrics_full.json", "w") as f:
                 json.dump(metrics, f, indent=2)
             
-            self._generate_markdown_report(run_dir, metrics, trades_df)
+            self._generate_markdown_report(run_dir, metrics, trades_df, diagnostics)
             self._generate_charts(run_dir, trades_df)
         
         logger.info(f"Report complete:  {run_dir}")
     
-    def _generate_markdown_report(self, run_dir: Path, metrics: Dict, trades_df: pd.DataFrame) -> None:
+    def _generate_markdown_report(self, run_dir: Path, metrics: Dict, trades_df: pd.DataFrame, diagnostics: Optional[Dict]) -> None:
         """Generate markdown summary."""
         
         md = f"""# Backtest Report
@@ -290,7 +296,57 @@ class ReportGenerator:
 - Expectancy (R): {stats["expectancy_r"]:+.2f}
 
 """
-        
+
+        if diagnostics:
+            funnel = diagnostics.get("signal_funnel", {})
+            blocked_risk = funnel.get("blocked_by_risk_breakdown", {})
+            blocked_policy = funnel.get("blocked_by_policy_breakdown", diagnostics.get("blocked_by_policy", {}))
+
+            md += """
+---
+
+## Signal Funnel Summary
+
+| Stage | Count |
+|-------|-------|
+| Pattern signals | %(pattern)s |
+| After context filters | %(context)s |
+| After NPES | %(npes)s |
+| Blocked by confidence gate | %(conf)s |
+| Blocked by model confirmation | %(model)s |
+| Blocked by policy (total) | %(policy)s |
+| Blocked by risk (total) | %(risk)s |
+| Executed trades | %(exec)s |
+
+""" % {
+                "pattern": funnel.get("pattern_signals_total", 0),
+                "context": funnel.get("signals_after_context_filters", 0),
+                "npes": funnel.get("signals_after_npes", 0),
+                "conf": funnel.get("blocked_by_confidence_gate", 0),
+                "model": funnel.get("blocked_by_model_confirmation", 0),
+                "policy": funnel.get("blocked_by_policy_total", 0),
+                "risk": funnel.get("blocked_by_risk_total", 0),
+                "exec": funnel.get("executed_trades", 0),
+            }
+
+            if blocked_risk:
+                md += "### Top Risk Blocks\n\n"
+                for reason, count in sorted(blocked_risk.items(), key=lambda x: x[1], reverse=True):
+                    md += f"- {reason}: {count}\n"
+            if blocked_policy:
+                md += "\n### Top Policy Blocks\n\n"
+                for reason, count in sorted(blocked_policy.items(), key=lambda x: x[1], reverse=True):
+                    md += f"- {reason}: {count}\n"
+
+            no_trade_days = diagnostics.get("days_with_no_trades", [])
+            if no_trade_days:
+                md += "\n### WHY_NO_TRADE_TODAY\n\n"
+                for day in no_trade_days:
+                    md += f"- {day['date']}: signals={day.get('pattern_signals_emitted', 0)}, "
+                    md += f"npes={day.get('signals_after_npes', 0)}, "
+                    md += f"risk_blocks={sum(day.get('blocked_by_risk', {}).values())}, "
+                    md += f"policy_blocks={sum(day.get('blocked_by_policy', {}).values())}\n"
+
         md += f"""
 ---
 

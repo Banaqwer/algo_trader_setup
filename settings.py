@@ -7,6 +7,7 @@ from typing import Optional, List
 from dotenv import load_dotenv
 from pydantic import BaseSettings, Field, validator, root_validator
 import yaml
+from copy import deepcopy
 
 # Load .env file
 load_dotenv(override=True)
@@ -46,6 +47,8 @@ class Settings(BaseSettings):
     apply_spread: bool = Field(default=True, env="APPLY_SPREAD")
     apply_slippage: bool = Field(default=True, env="APPLY_SLIPPAGE")
     slippage_bps: float = Field(default=1.5, env="SLIPPAGE_BPS")
+    base_spread_pips: float = Field(default=1.5, env="BASE_SPREAD_PIPS")
+    cost_multiplier: float = Field(default=1.0, env="COST_MULTIPLIER")
     spread_filter_pctl: int = Field(default=80, env="SPREAD_FILTER_PCTL")
     
     # Adaptive Trading Policy
@@ -60,6 +63,11 @@ class Settings(BaseSettings):
     
     # Fallback if adaptive disabled
     max_trades_per_day_fixed: int = Field(default=10, env="MAX_TRADES_PER_DAY_FIXED")
+
+    # Pattern toggles (used for diagnostics of non-firing patterns)
+    enable_session_bias_pattern: bool = Field(default=False, env="ENABLE_SESSION_BIAS_PATTERN")
+    enable_correlation_divergence_pattern: bool = Field(default=False, env="ENABLE_CORRELATION_DIVERGENCE_PATTERN")
+    enable_htf_range_pattern: bool = Field(default=True, env="ENABLE_HTF_RANGE_PATTERN")
     
     # Classic trade policy
     block_rollover:  bool = Field(default=True, env="BLOCK_ROLLOVER")
@@ -75,6 +83,8 @@ class Settings(BaseSettings):
     walkforward_train_years: int = Field(default=4, env="WALKFORWARD_TRAIN_YEARS")
     walkforward_test_months: int = Field(default=6, env="WALKFORWARD_TEST_MONTHS")
     walkforward_step_months: int = Field(default=3, env="WALKFORWARD_STEP_MONTHS")
+    walkforward_purge_days: int = Field(default=5, env="WALKFORWARD_PURGE_DAYS")
+    walkforward_embargo_days: int = Field(default=2, env="WALKFORWARD_EMBARGO_DAYS")
     
     # Logging
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
@@ -127,6 +137,12 @@ class Settings(BaseSettings):
             
             # Convert float fields
             elif key in ['slippage_bps', 'min_confidence_to_trade', 'confidence_multiplier']:
+                try:
+                    values[key] = float(value)
+                except (ValueError, TypeError):
+                    if key in values:
+                        del values[key]
+            elif key in ['base_spread_pips', 'cost_multiplier']:
                 try:
                     values[key] = float(value)
                 except (ValueError, TypeError):
@@ -200,12 +216,24 @@ class Settings(BaseSettings):
             "apply_spread": self.apply_spread,
             "apply_slippage":   self.apply_slippage,
             "slippage_bps": self.slippage_bps,
+            "base_spread_pips": self.base_spread_pips,
+            "cost_multiplier": self.cost_multiplier,
             "adaptive_trading": self.adaptive_trading,
             "base_max_trades_per_day": self. base_max_trades_per_day,
             "min_trades_per_day": self.min_trades_per_day,
             "max_trades_per_day": self.max_trades_per_day,
             "min_confidence_to_trade": self.min_confidence_to_trade,
             "log_level":   self.log_level,
+            "enable_session_bias_pattern": self.enable_session_bias_pattern,
+            "enable_correlation_divergence_pattern": self.enable_correlation_divergence_pattern,
+            "enable_htf_range_pattern": self.enable_htf_range_pattern,
+            "walkforward": {
+                "train_years": self.walkforward_train_years,
+                "test_months": self.walkforward_test_months,
+                "step_months": self.walkforward_step_months,
+                "purge_days": self.walkforward_purge_days,
+                "embargo_days": self.walkforward_embargo_days,
+            },
         }
     
     class Config: 

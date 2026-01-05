@@ -255,13 +255,14 @@ class SimulatedBroker:
         open_trade = self.open_trades. pop(trade_id)
 
         # Apply spread adjustment (note: direction reversed for exit)
+        exit_spread_pips = self.config.get("base_spread_pips", 1.5) * self.config.get("cost_multiplier", 1.0)
         exit_price_filled, spread_price = calculate_spread_adjustment(
-            exit_price, -open_trade.direction, 1.5, open_trade.instrument
+            exit_price, -open_trade.direction, exit_spread_pips, open_trade.instrument
         )
         exit_spread_cost = spread_price * abs(open_trade.units)
 
         # Apply slippage adjustment (note: direction reversed for exit)
-        slippage_bps = self.config.get("slippage_bps", 1.5)
+        slippage_bps = self.config.get("slippage_bps", 1.5) * self.config.get("cost_multiplier", 1.0)
         exit_price_filled, slippage_price = calculate_slippage_adjustment(
             exit_price_filled, -open_trade.direction, slippage_bps
         )
