@@ -607,6 +607,10 @@ class BacktesterComplete:
         
         The final units is the minimum of risk-based sizing and leverage-capped sizing.
         """
+        # Validate entry price
+        if entry_price <= 0.0001:
+            return 0
+            
         stop_distance = abs(entry_price - sl_price)
         if stop_distance == 0:
             return 0
@@ -615,10 +619,10 @@ class BacktesterComplete:
         risk_usd = self.account.current_balance * 0.005
         units_by_risk = int(risk_usd / stop_distance)
 
-        # Cap units by maximum leverage
-        max_leverage = self.risk_manager.max_leverage
+        # Cap units by maximum leverage (with safe fallback)
+        max_leverage = getattr(self.risk_manager, 'max_leverage', 5.0)
         max_notional = self.account.current_balance * max_leverage
-        max_units_by_leverage = int(max_notional / entry_price) if entry_price > 0 else 0
+        max_units_by_leverage = int(max_notional / entry_price)
 
         # Use the smaller of the two to ensure both risk and leverage constraints are met
         units = min(units_by_risk, max_units_by_leverage)

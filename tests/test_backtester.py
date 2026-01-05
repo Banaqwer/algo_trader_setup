@@ -114,7 +114,10 @@ class TestRiskManagerValidation:
         # Position that exceeds leverage cap
         entry_price = 1.10
         sl_price = 1.09
-        units = 50000  # Way over leverage cap (50000 * 1.10 / 5000 = 11x)
+        # Calculate units that result in 6x leverage (exceeds 5x max)
+        # Leverage = (units * entry_price) / balance
+        # 6 = (units * 1.10) / 5000 → units = 27,273
+        units = int((5000 * 6) / 1.10)  # 6x leverage > 5x max
         
         allowed, reason = risk_manager.validate_trade('EUR_USD', units, entry_price, sl_price)
         
