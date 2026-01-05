@@ -1,0 +1,11 @@
+{
+  "total_trades": 157,
+  "wins": 74,
+  "losses": 83,
+  "win_rate": 0.4713375796178344,
+  "total_pnl_usd": -585.969450450585,
+  "avg_pnl_per_trade": -3.732289493315828,
+  "expectancy_r": -0.35601952413425664,
+  "max_drawdown": 0.13518922926647087,
+  "final_balance": 4414.030549549414
+}

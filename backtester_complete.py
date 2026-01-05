@@ -72,10 +72,38 @@ class BacktesterComplete:
         self.closed_trades = []
         self.last_daily_reset = None
         self.last_weekly_reset = None
+        
+        # Diagnostic counters for signal pipeline analysis
+        self._init_diagnostics()
 
         logger.info(
             f"BacktesterComplete initialized (adaptive_trading={settings.adaptive_trading})"
         )
+    
+    def _init_diagnostics(self):
+        """Initialize diagnostic counters for pipeline analysis."""
+        self.diagnostics = {
+            # Per-pattern signal counts
+            "pattern_signals_emitted": {},
+            # Pipeline survival counts
+            "signals_after_context_filters": 0,
+            "signals_after_npes": 0,
+            "blocked_by_confidence_gate": 0,
+            "blocked_by_model_confirmation": 0,
+            "blocked_by_risk": {},
+            "blocked_by_policy": {},
+            "executed_trades": 0,
+            # Daily tracking
+            "days_with_no_trades": [],
+            "trades_per_day": {},
+            # Per-pattern stats
+            "pattern_fire_rate": {},
+        }
+        
+        # Initialize per-pattern counters
+        for pattern in self.patterns:
+            self.diagnostics["pattern_signals_emitted"][pattern.pattern_id] = 0
+            self.diagnostics["pattern_fire_rate"][pattern.pattern_id] = {"fired": 0, "checked": 0}
 
     def run(
         self,
@@ -309,20 +337,31 @@ class BacktesterComplete:
 
                     signals = []
                     for pattern in self.patterns:
+                        # Track pattern fire rate
+                        self.diagnostics["pattern_fire_rate"][pattern.pattern_id]["checked"] += 1
                         try:
                             sig = pattern.recognize(instrument, exec_tf, features, context)
                             if sig is not None:
                                 signals.append(sig)
+                                # Track per-pattern signal counts
+                                self.diagnostics["pattern_signals_emitted"][pattern.pattern_id] += 1
+                                self.diagnostics["pattern_fire_rate"][pattern.pattern_id]["fired"] += 1
                         except Exception as e:
                             logger.debug(f"Pattern {pattern.pattern_id} error: {e}")
 
                     if not signals:
                         continue
+                    
+                    # Track signals after context filters
+                    self.diagnostics["signals_after_context_filters"] += 1
 
                     agg_result = self.aggregator.aggregate(signals, context)
 
                     if not agg_result.trade_allowed or agg_result.direction == 0:
                         continue
+                    
+                    # Track signals after NPES filter
+                    self.diagnostics["signals_after_npes"] += 1
 
                     trades_today = self.daily_trade_count.get(current_date, 0)
                     allowed, reason = self.adaptive_limiter.should_take_trade(
@@ -331,6 +370,9 @@ class BacktesterComplete:
 
                     if not allowed: 
                         logger.debug(f"Trade rejected (adaptive): {reason}")
+                        # Track confidence gate blocks
+                        if "Confidence" in reason:
+                            self.diagnostics["blocked_by_confidence_gate"] += 1
                         continue
 
                     try:
@@ -374,6 +416,10 @@ class BacktesterComplete:
 
                         if not allowed:
                             logger.debug(f"Trade rejected: {reason}")
+                            # Track risk blocks by reason
+                            risk_reason = reason.split(":")[0] if ":" in reason else reason
+                            self.diagnostics["blocked_by_risk"][risk_reason] = \
+                                self.diagnostics["blocked_by_risk"].get(risk_reason, 0) + 1
                             continue
 
                         trade_id = self.broker.place_order(
@@ -405,6 +451,13 @@ class BacktesterComplete:
                             self.daily_trade_count[current_date] = (
                                 self.daily_trade_count.get(current_date, 0) + 1
                             )
+                            # Track executed trades
+                            self.diagnostics["executed_trades"] += 1
+                            # Track trades per day
+                            date_str = str(current_date)
+                            self.diagnostics["trades_per_day"][date_str] = \
+                                self.diagnostics["trades_per_day"].get(date_str, 0) + 1
+                            
                             logger.info(
                                 f"Trade #{self.daily_trade_count[current_date]}/{max_trades_today}: "
                                 f"{instrument} {agg_result.direction:+d} @ {entry_price:.5f}"
@@ -415,7 +468,8 @@ class BacktesterComplete:
 
             # Update open positions with current prices - optimized
             for instrument in instruments:
-                key = (instrument, "M5")
+                # Use the base timeframe for price updates (not hardcoded M5)
+                key = (instrument, base_tf)
                 if key not in data_cache:
                     continue
 
@@ -544,14 +598,30 @@ class BacktesterComplete:
         return sl_price, tp_price, sl_atr, tp_atr
 
     def _calculate_position_size(self, entry_price: float, sl_price: float) -> int:
-        """Calculate position size."""
-
+        """Calculate position size with leverage cap.
+        
+        Position size is determined by:
+        1. Risk per trade (0.5% of account balance)
+        2. Stop distance (entry - SL)
+        3. Maximum leverage constraint (from risk_manager config)
+        
+        The final units is the minimum of risk-based sizing and leverage-capped sizing.
+        """
         stop_distance = abs(entry_price - sl_price)
         if stop_distance == 0:
             return 0
 
+        # Calculate units based on risk per trade
         risk_usd = self.account.current_balance * 0.005
-        units = int(risk_usd / stop_distance)
+        units_by_risk = int(risk_usd / stop_distance)
+
+        # Cap units by maximum leverage
+        max_leverage = self.risk_manager.max_leverage
+        max_notional = self.account.current_balance * max_leverage
+        max_units_by_leverage = int(max_notional / entry_price) if entry_price > 0 else 0
+
+        # Use the smaller of the two to ensure both risk and leverage constraints are met
+        units = min(units_by_risk, max_units_by_leverage)
 
         return max(units, 1)
 
@@ -579,8 +649,65 @@ class BacktesterComplete:
         metrics = self._compute_metrics(trades)
         with open(run_dir / "metrics.json", "w") as f:
             json.dump(metrics, f, indent=2)
+        
+        # Save diagnostic data (signal pipeline analysis)
+        self._save_diagnostics(run_dir)
 
         logger.info(f"Results saved to {run_dir}")
+    
+    def _save_diagnostics(self, run_dir: Path) -> None:
+        """Save diagnostic counters and signal funnel analysis."""
+        
+        # Calculate pattern fire rates
+        pattern_fire_rates = {}
+        for pid, stats in self.diagnostics["pattern_fire_rate"].items():
+            checked = stats["checked"]
+            fired = stats["fired"]
+            rate = (fired / checked * 100) if checked > 0 else 0
+            pattern_fire_rates[pid] = {
+                "checked": checked,
+                "fired": fired,
+                "fire_rate_pct": round(rate, 2)
+            }
+        
+        # Build signal funnel
+        signal_funnel = {
+            "pattern_signals_total": sum(self.diagnostics["pattern_signals_emitted"].values()),
+            "signals_after_context_filters": self.diagnostics["signals_after_context_filters"],
+            "signals_after_npes": self.diagnostics["signals_after_npes"],
+            "blocked_by_confidence_gate": self.diagnostics["blocked_by_confidence_gate"],
+            "blocked_by_risk_total": sum(self.diagnostics["blocked_by_risk"].values()),
+            "blocked_by_risk_breakdown": self.diagnostics["blocked_by_risk"],
+            "executed_trades": self.diagnostics["executed_trades"],
+        }
+        
+        # Calculate survival rates
+        total_signals = signal_funnel["pattern_signals_total"]
+        if total_signals > 0:
+            signal_funnel["survival_rate_npes"] = round(
+                signal_funnel["signals_after_npes"] / total_signals * 100, 2
+            )
+            signal_funnel["survival_rate_final"] = round(
+                signal_funnel["executed_trades"] / total_signals * 100, 2
+            )
+        
+        diagnostics_output = {
+            "signal_funnel": signal_funnel,
+            "pattern_signals_emitted": self.diagnostics["pattern_signals_emitted"],
+            "pattern_fire_rates": pattern_fire_rates,
+            "blocked_by_risk": self.diagnostics["blocked_by_risk"],
+            "trades_per_day": self.diagnostics["trades_per_day"],
+        }
+        
+        with open(run_dir / "diagnostics.json", "w") as f:
+            json.dump(diagnostics_output, f, indent=2)
+        
+        # Log summary
+        logger.info(f"=== Signal Funnel Summary ===")
+        logger.info(f"Pattern signals emitted: {signal_funnel['pattern_signals_total']}")
+        logger.info(f"Signals after NPES: {signal_funnel['signals_after_npes']}")
+        logger.info(f"Blocked by risk: {signal_funnel['blocked_by_risk_total']}")
+        logger.info(f"Executed trades: {signal_funnel['executed_trades']}")
 
     def _compute_metrics(self, trades: List[TradeRecord]) -> Dict:
         """Compute backtest metrics."""

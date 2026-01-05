@@ -1,0 +1,102 @@
+{
+  "signal_funnel": {
+    "pattern_signals_total": 532,
+    "signals_after_context_filters": 443,
+    "signals_after_npes": 440,
+    "blocked_by_confidence_gate": 0,
+    "blocked_by_risk_total": 264,
+    "blocked_by_risk_breakdown": {
+      "Max positions per symbol (1) reached for EUR_USD": 256,
+      "Daily loss limit hit": 8
+    },
+    "executed_trades": 158,
+    "survival_rate_npes": 82.71,
+    "survival_rate_final": 29.7
+  },
+  "pattern_signals_emitted": {
+    "VOL_COMPRESSION": 17,
+    "LIQUIDITY_SWEEP": 100,
+    "SESSION_BIAS": 0,
+    "HTF_RANGE": 0,
+    "CORRELATION_DIVERGENCE": 0,
+    "FAILED_BREAKOUT": 415
+  },
+  "pattern_fire_rates": {
+    "VOL_COMPRESSION": {
+      "checked": 3496,
+      "fired": 17,
+      "fire_rate_pct": 0.49
+    },
+    "LIQUIDITY_SWEEP": {
+      "checked": 3496,
+      "fired": 100,
+      "fire_rate_pct": 2.86
+    },
+    "SESSION_BIAS": {
+      "checked": 3496,
+      "fired": 0,
+      "fire_rate_pct": 0.0
+    },
+    "HTF_RANGE": {
+      "checked": 3496,
+      "fired": 0,
+      "fire_rate_pct": 0.0
+    },
+    "CORRELATION_DIVERGENCE": {
+      "checked": 3496,
+      "fired": 0,
+      "fire_rate_pct": 0.0
+    },
+    "FAILED_BREAKOUT": {
+      "checked": 3496,
+      "fired": 415,
+      "fire_rate_pct": 11.87
+    }
+  },
+  "blocked_by_risk": {
+    "Max positions per symbol (1) reached for EUR_USD": 256,
+    "Daily loss limit hit": 8
+  },
+  "trades_per_day": {
+    "2025-11-05": 4,
+    "2025-11-06": 4,
+    "2025-11-07": 3,
+    "2025-11-09": 1,
+    "2025-11-10": 4,
+    "2025-11-11": 2,
+    "2025-11-12": 4,
+    "2025-11-13": 5,
+    "2025-11-14": 5,
+    "2025-11-17": 6,
+    "2025-11-18": 4,
+    "2025-11-19": 4,
+    "2025-11-20": 4,
+    "2025-11-21": 2,
+    "2025-11-24": 3,
+    "2025-11-25": 5,
+    "2025-11-26": 4,
+    "2025-11-27": 4,
+    "2025-11-28": 4,
+    "2025-11-30": 1,
+    "2025-12-01": 6,
+    "2025-12-02": 1,
+    "2025-12-03": 5,
+    "2025-12-04": 5,
+    "2025-12-05": 4,
+    "2025-12-07": 1,
+    "2025-12-08": 3,
+    "2025-12-09": 3,
+    "2025-12-10": 7,
+    "2025-12-11": 3,
+    "2025-12-12": 5,
+    "2025-12-15": 6,
+    "2025-12-16": 5,
+    "2025-12-17": 5,
+    "2025-12-18": 4,
+    "2025-12-19": 5,
+    "2025-12-22": 5,
+    "2025-12-23": 6,
+    "2025-12-24": 4,
+    "2025-12-26": 2
+  }
+}

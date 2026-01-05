@@ -1,0 +1,13 @@
+{
+  "current_balance": 4414.030549549414,
+  "peak_equity": 5021.270512766095,
+  "current_drawdown": 0.12093352900880999,
+  "max_drawdown": 0.13518922926647087,
+  "daily_pnl": 30.37610733299516,
+  "weekly_pnl": 15.117579835329707,
+  "total_trades": 157,
+  "wins": 74,
+  "losses": 83,
+  "closed_pnl": -585.9694504505851,
+  "open_positions": 1
+}
