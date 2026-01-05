@@ -44,6 +44,10 @@ def run_smoke_test():
             start_date=start_date. isoformat(),
             end_date=end_date.isoformat()
         )
+
+        manifest_path = Path(settings.runs_dir) / run_id / "run_manifest.json"
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"Run manifest not created: {manifest_path}")
         
         logger.info(f"✓ Smoke test complete! Run ID: {run_id}")
         logger.info(f"Results:  artifacts/runs/{run_id}/")

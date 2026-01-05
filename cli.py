@@ -1,13 +1,16 @@
 import typer
 import logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
+import pandas as pd
 
 from settings import settings
 from backtester_complete import BacktesterComplete
 from reporting_complete import ReportGenerator
 from data_downloader import DataDownloader
+from walkforward import generate_walkforward_windows
+from validation import run_cost_sensitivity
 
 app = typer.Typer(help="Algo Trader CLI")
 
@@ -128,6 +131,38 @@ def download_data(
 
 
 @app.command()
+def cost_sensitivity(
+    universe: Optional[str] = typer.Option(None, help="Instruments (comma-separated)"),
+    tfs: Optional[str] = typer.Option("M15", help="Timeframes (comma-separated)"),
+    start_date: Optional[str] = typer.Option(None, help="Start date ISO"),
+    end_date: Optional[str] = typer.Option(None, help="End date ISO"),
+):
+    """Run cost sensitivity sweep at 1.0x / 1.25x / 1.50x costs."""
+    instruments = universe.split(",") if universe else settings.instruments
+    timeframes = tfs.split(",") if tfs else ["M15"]
+
+    logger.info(
+        f"Running cost sensitivity sweep for {instruments} {timeframes} | "
+        f"{start_date or 'default'} → {end_date or 'default'}"
+    )
+    try:
+        results = run_cost_sensitivity(
+            instruments=instruments,
+            timeframes=timeframes,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        for row in results:
+            logger.info(
+                f"Multiplier {row['cost_multiplier']:.2f} | "
+                f"run_id={row['run_id']} | metrics={row['metrics_file']}"
+            )
+    except Exception as e:
+        logger.exception(f"Cost sensitivity sweep failed: {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def walkforward(
     train_years: int = typer.Option(
         4, help="Training period in years"
@@ -144,21 +179,45 @@ def walkforward(
     
     try:
         backtester = BacktesterComplete(settings)
-        
-        logger. info(
-            f"Train:  {train_years} years, Test: {test_months} months, "
-            f"Step: {step_months} months"
+
+        today = pd.Timestamp(datetime.utcnow().date())
+        dataset_end = pd.Timestamp(settings.end_date) if settings.end_date else today
+        dataset_start = pd.Timestamp(settings.start_date) if settings.start_date else dataset_end - pd.DateOffset(years=settings.backtest_years)
+
+        logger.info(
+            f"Train: {train_years}y, Test: {test_months}m, Step: {step_months}m, "
+            f"Purge: {settings.walkforward_purge_days}d, Embargo: {settings.walkforward_embargo_days}d"
         )
-        
-        # Simplified walk-forward:  just run multiple backtests
-        for i in range(3):  # Run 3 iterations
-            logger.info(f"Iteration {i+1}/3...")
+
+        windows = generate_walkforward_windows(
+            start_date=dataset_start,
+            end_date=dataset_end,
+            train_years=train_years,
+            test_months=test_months,
+            step_months=step_months,
+            purge_days=settings.walkforward_purge_days,
+            embargo_days=settings.walkforward_embargo_days,
+        )
+
+        if not windows:
+            logger.warning("No walk-forward windows generated for the given date range.")
+            return
+
+        for idx, window in enumerate(windows, start=1):
+            logger.info(
+                f"Iteration {idx}/{len(windows)} | "
+                f"Train {window.train_start.date()} → {window.train_end.date()} | "
+                f"Purge to {window.purge_end.date()} | Embargo to {window.embargo_end.date()} | "
+                f"Test {window.test_start.date()} → {window.test_end.date()}"
+            )
             run_id = backtester.run(
                 instruments=settings.instruments,
                 timeframes=["M5", "M15", "H1"],
+                start_date=window.test_start.date().isoformat(),
+                end_date=window.test_end.date().isoformat(),
             )
-            logger.info(f"  Iteration {i+1} complete:  {run_id}")
-        
+            logger.info(f"  Iteration {idx} complete:  {run_id}")
+
         logger.info("Walk-forward complete!")
         
     except Exception as e:

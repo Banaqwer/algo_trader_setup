@@ -1,7 +1,9 @@
 import logging
 import uuid
 import json
-from datetime import datetime, timedelta
+import subprocess
+from copy import deepcopy
+from datetime import datetime, timedelta, date
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple
 import pandas as pd
@@ -40,14 +42,24 @@ class BacktesterComplete:
         self.downloader = DataDownloader(settings)
         self.feature_engine = FeatureEngine()
 
-        self.patterns = [
-            VolatilityCompressionPattern(),
-            LiquiditySweepPattern(),
-            SessionBiasPattern(),
-            HTFRangePattern(),
-            CorrelationDivergencePattern(),
-            FailedBreakoutPattern(),
-        ]
+        self.disabled_patterns = []
+        self.patterns = [VolatilityCompressionPattern(), LiquiditySweepPattern()]
+        if settings.enable_session_bias_pattern:
+            self.patterns.append(SessionBiasPattern())
+        else:
+            logger.info("SessionBiasPattern disabled via config (enable_session_bias_pattern=False)")
+            self.disabled_patterns.append("SESSION_BIAS")
+        if settings.enable_htf_range_pattern:
+            self.patterns.append(HTFRangePattern())
+        else:
+            logger.info("HTFRangePattern disabled via config (enable_htf_range_pattern=False)")
+            self.disabled_patterns.append("HTF_RANGE")
+        if settings.enable_correlation_divergence_pattern:
+            self.patterns.append(CorrelationDivergencePattern())
+        else:
+            logger.info("CorrelationDivergencePattern disabled via config (enable_correlation_divergence_pattern=False)")
+            self.disabled_patterns.append("CORRELATION_DIVERGENCE")
+        self.patterns.append(FailedBreakoutPattern())
 
         self.aggregator = PatternAggregator()
 
@@ -83,8 +95,9 @@ class BacktesterComplete:
     def _init_diagnostics(self):
         """Initialize diagnostic counters for pipeline analysis."""
         self.diagnostics = {
-            # Per-pattern signal counts
+            # Per-pattern signal counts (with timeframe breakdown)
             "pattern_signals_emitted": {},
+            "patterns_disabled": self.disabled_patterns.copy(),
             # Pipeline survival counts
             "signals_after_context_filters": 0,
             "signals_after_npes": 0,
@@ -96,14 +109,61 @@ class BacktesterComplete:
             # Daily tracking
             "days_with_no_trades": [],
             "trades_per_day": {},
+            "daily_funnel": {},
             # Per-pattern stats
             "pattern_fire_rate": {},
         }
         
         # Initialize per-pattern counters
         for pattern in self.patterns:
-            self.diagnostics["pattern_signals_emitted"][pattern.pattern_id] = 0
+            self.diagnostics["pattern_signals_emitted"][pattern.pattern_id] = {
+                "total": 0,
+                "timeframes": {},
+            }
             self.diagnostics["pattern_fire_rate"][pattern.pattern_id] = {"fired": 0, "checked": 0}
+        for disabled in self.disabled_patterns:
+            if disabled not in self.diagnostics["pattern_signals_emitted"]:
+                self.diagnostics["pattern_signals_emitted"][disabled] = {
+                    "total": 0,
+                    "timeframes": {},
+                }
+            if disabled not in self.diagnostics["pattern_fire_rate"]:
+                self.diagnostics["pattern_fire_rate"][disabled] = {"fired": 0, "checked": 0}
+
+    def _get_daily_bucket(self, date_str: str) -> Dict:
+        """Return daily funnel bucket for a given date."""
+        if date_str not in self.diagnostics["daily_funnel"]:
+            self.diagnostics["daily_funnel"][date_str] = {
+                "pattern_signals_emitted": 0,
+                "signals_after_context_filters": 0,
+                "signals_after_npes": 0,
+                "blocked_by_confidence_gate": 0,
+                "blocked_by_model_confirmation": 0,
+                "blocked_by_risk": {},
+                "blocked_by_policy": {},
+                "executed_trades": 0,
+                "top_notes": [],
+            }
+        return self.diagnostics["daily_funnel"][date_str]
+
+    def _finalize_day(self, date_obj: datetime.date):
+        """Persist daily diagnostics when a day ends."""
+        date_str = str(date_obj)
+        daily_bucket = self.diagnostics["daily_funnel"].get(date_str, {})
+        executed = daily_bucket.get("executed_trades", 0)
+        if executed == 0:
+            snapshot = {
+                "date": date_str,
+                "pattern_signals_emitted": daily_bucket.get("pattern_signals_emitted", 0),
+                "signals_after_context_filters": daily_bucket.get("signals_after_context_filters", 0),
+                "signals_after_npes": daily_bucket.get("signals_after_npes", 0),
+                "blocked_by_confidence_gate": daily_bucket.get("blocked_by_confidence_gate", 0),
+                "blocked_by_model_confirmation": daily_bucket.get("blocked_by_model_confirmation", 0),
+                "blocked_by_risk": daily_bucket.get("blocked_by_risk", {}),
+                "blocked_by_policy": daily_bucket.get("blocked_by_policy", {}),
+                "notes": daily_bucket.get("top_notes", []),
+            }
+            self.diagnostics["days_with_no_trades"].append(snapshot)
 
     def run(
         self,
@@ -117,6 +177,8 @@ class BacktesterComplete:
         run_id = str(uuid.uuid4())[: 8]
         run_dir = Path(self.settings.runs_dir) / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
+        self.current_run_id = run_id
+        self.current_run_dir = run_dir
 
         logger.info(f"Starting backtest run_id={run_id}")
 
@@ -276,8 +338,14 @@ class BacktesterComplete:
 
             current_time = base_data.iloc[idx]["time"]
             current_date = current_time.date()
+            date_str = str(current_date)
+            daily_bucket = self._get_daily_bucket(date_str)
 
             if self.last_daily_reset is None or current_date > self.last_daily_reset:
+                # finalize previous day diagnostics
+                if self.last_daily_reset is not None:
+                    self._finalize_day(self.last_daily_reset)
+
                 self.account.reset_daily(current_time)
                 self.last_daily_reset = current_date
                 self.daily_trade_count[current_date] = 0
@@ -344,7 +412,12 @@ class BacktesterComplete:
                             if sig is not None:
                                 signals.append(sig)
                                 # Track per-pattern signal counts
-                                self.diagnostics["pattern_signals_emitted"][pattern.pattern_id] += 1
+                                pattern_counter = self.diagnostics["pattern_signals_emitted"][pattern.pattern_id]
+                                pattern_counter["total"] += 1
+                                pattern_counter["timeframes"][exec_tf] = (
+                                    pattern_counter["timeframes"].get(exec_tf, 0) + 1
+                                )
+                                daily_bucket["pattern_signals_emitted"] += 1
                                 self.diagnostics["pattern_fire_rate"][pattern.pattern_id]["fired"] += 1
                         except Exception as e:
                             logger.debug(f"Pattern {pattern.pattern_id} error: {e}")
@@ -354,14 +427,19 @@ class BacktesterComplete:
                     
                     # Track signals after context filters
                     self.diagnostics["signals_after_context_filters"] += 1
+                    daily_bucket["signals_after_context_filters"] += 1
 
                     agg_result = self.aggregator.aggregate(signals, context)
 
                     if not agg_result.trade_allowed or agg_result.direction == 0:
+                        # Model confirmation stage placeholder (no model gating yet)
+                        self.diagnostics["blocked_by_model_confirmation"] += 1
+                        daily_bucket["blocked_by_model_confirmation"] += 1
                         continue
                     
                     # Track signals after NPES filter
                     self.diagnostics["signals_after_npes"] += 1
+                    daily_bucket["signals_after_npes"] += 1
 
                     trades_today = self.daily_trade_count.get(current_date, 0)
                     allowed, reason = self.adaptive_limiter.should_take_trade(
@@ -373,6 +451,13 @@ class BacktesterComplete:
                         # Track confidence gate blocks
                         if "Confidence" in reason:
                             self.diagnostics["blocked_by_confidence_gate"] += 1
+                            daily_bucket["blocked_by_confidence_gate"] += 1
+                        policy_reason = reason.split(":")[0] if ":" in reason else reason
+                        self.diagnostics["blocked_by_policy"][policy_reason] = (
+                            self.diagnostics["blocked_by_policy"].get(policy_reason, 0) + 1
+                        )
+                        policy_bucket = daily_bucket["blocked_by_policy"]
+                        policy_bucket[policy_reason] = policy_bucket.get(policy_reason, 0) + 1
                         continue
 
                     try:
@@ -418,8 +503,11 @@ class BacktesterComplete:
                             logger.debug(f"Trade rejected: {reason}")
                             # Track risk blocks by reason
                             risk_reason = reason.split(":")[0] if ":" in reason else reason
-                            self.diagnostics["blocked_by_risk"][risk_reason] = \
+                            self.diagnostics["blocked_by_risk"][risk_reason] = (
                                 self.diagnostics["blocked_by_risk"].get(risk_reason, 0) + 1
+                            )
+                            daily_risk_bucket = daily_bucket["blocked_by_risk"]
+                            daily_risk_bucket[risk_reason] = daily_risk_bucket.get(risk_reason, 0) + 1
                             continue
 
                         trade_id = self.broker.place_order(
@@ -441,7 +529,7 @@ class BacktesterComplete:
                             timeframe=exec_tf,
                             timestamp=current_time,
                             spread_pips=context["spread_pips"],
-                            slippage_bps=self.settings.slippage_bps,
+                            slippage_bps=self.settings.slippage_bps * self.settings.cost_multiplier,
                         )
 
                         if trade_id:
@@ -453,6 +541,7 @@ class BacktesterComplete:
                             )
                             # Track executed trades
                             self.diagnostics["executed_trades"] += 1
+                            daily_bucket["executed_trades"] += 1
                             # Track trades per day
                             date_str = str(current_date)
                             self.diagnostics["trades_per_day"][date_str] = \
@@ -507,6 +596,10 @@ class BacktesterComplete:
                                     context.get("session", "unknown"),
                                 )
 
+        # Finalize diagnostics for the last processed day
+        if self.last_daily_reset is not None:
+            self._finalize_day(self.last_daily_reset)
+
         return self.broker.closed_trades
 
     def _build_context(
@@ -558,12 +651,14 @@ class BacktesterComplete:
                 if d1_range > 0:
                     htf_range_pos = (close - d1_low) / d1_range
 
+        spread_pips = max(self.settings.base_spread_pips * self.settings.cost_multiplier, 0)
+
         return {
             "session": session,
             "htf_trend": htf_trend,
             "volatility_regime": vol_regime,
             "current_drawdown": self.account.current_drawdown,
-            "spread_pips": 1.5,
+            "spread_pips": spread_pips,
             "liquidity_state": "normal",
             "htf_range_position": htf_range_pos,
         }
@@ -656,9 +751,59 @@ class BacktesterComplete:
         
         # Save diagnostic data (signal pipeline analysis)
         self._save_diagnostics(run_dir)
+        # Save manifest for reproducibility
+        self._save_run_manifest(run_id, run_dir, data_cache)
 
         logger.info(f"Results saved to {run_dir}")
     
+    def _save_run_manifest(self, run_id: str, run_dir: Path, data_cache: Dict) -> None:
+        """Persist run manifest for reproducibility."""
+        git_hash = "unknown"
+        try:
+            git_hash = (
+                subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=Path(__file__).parent)
+                .decode("utf-8")
+                .strip()
+            )
+        except Exception as exc:
+            logger.warning(f"Could not read git hash: {exc}")
+
+        coverage_summary = {}
+        for (instrument, tf), df in data_cache.items():
+            try:
+                coverage_summary[f"{instrument}_{tf}"] = {
+                    "rows": int(len(df)),
+                    "start": str(df['time'].iloc[0]),
+                    "end": str(df['time'].iloc[-1]),
+                }
+            except Exception:
+                coverage_summary[f"{instrument}_{tf}"] = {"rows": int(len(df))}
+
+        manifest = {
+            "run_id": run_id,
+            "timestamp_utc": datetime.utcnow().isoformat(),
+            "git_commit": git_hash,
+            "settings_snapshot": deepcopy(self.settings.dict()),
+            "cost_assumptions": {
+                "base_spread_pips": self.settings.base_spread_pips,
+                "slippage_bps": self.settings.slippage_bps,
+                "cost_multiplier": self.settings.cost_multiplier,
+                "apply_spread": self.settings.apply_spread,
+                "apply_slippage": self.settings.apply_slippage,
+            },
+            "walkforward_settings": {
+                "train_years": self.settings.walkforward_train_years,
+                "test_months": self.settings.walkforward_test_months,
+                "step_months": self.settings.walkforward_step_months,
+                "purge_days": self.settings.walkforward_purge_days,
+                "embargo_days": self.settings.walkforward_embargo_days,
+            },
+            "data_coverage": coverage_summary,
+        }
+
+        with open(run_dir / "run_manifest.json", "w") as f:
+            json.dump(manifest, f, indent=2)
+
     def _save_diagnostics(self, run_dir: Path) -> None:
         """Save diagnostic counters and signal funnel analysis."""
         
@@ -676,10 +821,13 @@ class BacktesterComplete:
         
         # Build signal funnel
         signal_funnel = {
-            "pattern_signals_total": sum(self.diagnostics["pattern_signals_emitted"].values()),
+            "pattern_signals_total": sum(v["total"] for v in self.diagnostics["pattern_signals_emitted"].values()),
             "signals_after_context_filters": self.diagnostics["signals_after_context_filters"],
             "signals_after_npes": self.diagnostics["signals_after_npes"],
             "blocked_by_confidence_gate": self.diagnostics["blocked_by_confidence_gate"],
+            "blocked_by_model_confirmation": self.diagnostics["blocked_by_model_confirmation"],
+            "blocked_by_policy_total": sum(self.diagnostics["blocked_by_policy"].values()),
+            "blocked_by_policy_breakdown": self.diagnostics["blocked_by_policy"],
             "blocked_by_risk_total": sum(self.diagnostics["blocked_by_risk"].values()),
             "blocked_by_risk_breakdown": self.diagnostics["blocked_by_risk"],
             "executed_trades": self.diagnostics["executed_trades"],
@@ -701,6 +849,10 @@ class BacktesterComplete:
             "pattern_fire_rates": pattern_fire_rates,
             "blocked_by_risk": self.diagnostics["blocked_by_risk"],
             "trades_per_day": self.diagnostics["trades_per_day"],
+            "blocked_by_policy": self.diagnostics["blocked_by_policy"],
+            "days_with_no_trades": self.diagnostics["days_with_no_trades"],
+            "daily_funnel": self.diagnostics["daily_funnel"],
+            "patterns_disabled": self.disabled_patterns,
         }
         
         with open(run_dir / "diagnostics.json", "w") as f:
