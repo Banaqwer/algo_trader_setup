@@ -1,75 +1,101 @@
-"""Data loading utilities for EUR/USD timeframes."""
-
 from __future__ import annotations
-
-import logging
-import os
-from typing import Dict
 
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+from utils.timeframes import merge_higher_timeframes
 
 
-def _load_price_data(path: str) -> pd.DataFrame:
-    """Load OHLCV data from CSV or Parquet."""
-    if path.endswith(".parquet"):
-        df = pd.read_parquet(path)
-    else:
-        df = pd.read_csv(path, parse_dates=["time"])
-    df = df.sort_values("time").reset_index(drop=True)
+def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Accept common FX candle column variants and normalize to:
+    timestamp, open, high, low, close
+    """
+    cols_lower = {c.lower().strip(): c for c in df.columns}
+
+    ts_col = cols_lower.get("timestamp") or cols_lower.get("time") or cols_lower.get("date") or cols_lower.get("datetime")
+    if ts_col is None:
+        raise ValueError(f"CSV must contain a timestamp/time/date column. Found: {list(df.columns)}")
+
+    df = df.rename(columns={ts_col: "timestamp"})
+
+    for name in ["open", "high", "low", "close"]:
+        src = cols_lower.get(name)
+        if src is None:
+            if name not in df.columns:
+                raise ValueError(f"CSV must contain {name}. Found: {list(df.columns)}")
+        else:
+            df = df.rename(columns={src: name})
+
+    return df
+
+
+def _coerce_timestamp_index(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+    df = df.dropna(subset=["timestamp"])
+    df = df.sort_values("timestamp").set_index("timestamp")
+    df.index.name = "timestamp"
+
+    # Drop duplicate timestamps deterministically
+    if df.index.duplicated().any():
+        df = df[~df.index.duplicated(keep="first")]
+
+    return df
+
+
+def _validate_ohlc(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    bad = (
+        (df["high"] < df[["open", "close"]].max(axis=1))
+        | (df["low"] > df[["open", "close"]].min(axis=1))
+        | (df["high"] < df["low"])
+    )
+    if bad.any():
+        df = df.loc[~bad]
     return df
 
 
 def _resample_ohlc(df: pd.DataFrame, rule: str) -> pd.DataFrame:
-    """Resample an OHLCV dataframe to a new timeframe."""
-    data = df.copy()
-    data["time"] = pd.to_datetime(data["time"])
-    data = data.set_index("time")
+    """
+    Deterministic OHLC resampling. No lookahead (uses first/max/min/last).
+    """
     resampled = (
-        data.resample(rule)
-        .agg(
-            open="first",
-            high="max",
-            low="min",
-            close="last",
-            volume="sum",
-        )
+        df.resample(rule)
+        .agg({"open": "first", "high": "max", "low": "min", "close": "last"})
         .dropna()
-        .reset_index()
     )
+    resampled.index.name = "timestamp"
     return resampled
 
 
-def load_eurusd_timeframes(
-    m5_csv_path: str = "data/EUR_USD_M5.csv",
-) -> Dict[str, pd.DataFrame]:
-    """Load EUR/USD price data across timeframes."""
-    if os.path.exists(m5_csv_path):
-        m5_df = _load_price_data(m5_csv_path)
-    else:
-        parquet_path = m5_csv_path.replace(".csv", ".parquet")
-        if not os.path.exists(parquet_path):
-            raise FileNotFoundError(f"No data found at {m5_csv_path} or {parquet_path}")
-        logger.info("CSV not found. Falling back to %s", parquet_path)
-        m5_df = _load_price_data(parquet_path)
+def load_eurusd_timeframes(m5_csv_path: str = "data/EUR_USD_M5.csv") -> dict[str, pd.DataFrame]:
+    """
+    Load EUR/USD M5 CSV and deterministically build:
+      - M5 base
+      - H1 via resample
+      - H4 via resample
+      - D1 via resample
+    Then merges H4/D1 context INTO H1 using backward-only asof alignment
+    (via utils.timeframes.merge_higher_timeframes) to prevent lookahead.
+    """
+    raw = pd.read_csv(m5_csv_path)
+    raw = _standardize_columns(raw)
+    raw = _coerce_timestamp_index(raw)
+    raw = _validate_ohlc(raw)
 
-    timeframes = {"M5": m5_df}
-    for tf, rule in [("H1", "1H"), ("H4", "4H"), ("D1", "1D")]:
-        parquet_name = f"data/EUR_USD_{tf}.parquet"
-        if tf == "D1":
-            parquet_name_alt = "data/EUR_USD_D.parquet"
-        else:
-            parquet_name_alt = None
+    m5 = raw[["open", "high", "low", "close"]].copy()
 
-        if os.path.exists(parquet_name):
-            timeframes[tf] = _load_price_data(parquet_name)
-            continue
-        if parquet_name_alt and os.path.exists(parquet_name_alt):
-            timeframes[tf] = _load_price_data(parquet_name_alt)
-            continue
+    h1 = _resample_ohlc(m5, "1H")
+    h4 = _resample_ohlc(m5, "4H")
+    d1 = _resample_ohlc(m5, "1D")
 
-        logger.info("Resampling M5 data to %s", tf)
-        timeframes[tf] = _resample_ohlc(m5_df, rule)
+    # Backward-only alignment: each H1 bar gets the most recent completed H4/D1 bar
+    h1 = merge_higher_timeframes(h1, h4, d1)
 
-    return timeframes
+    return {"M5": m5, "H1": h1, "H4": h4, "D1": d1}
+
+
+if __name__ == "__main__":
+    frames = load_eurusd_timeframes()
+    for k, v in frames.items():
+        print(k, len(v), v.index.min(), "->", v.index.max())
