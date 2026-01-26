@@ -38,8 +38,23 @@ def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
         ],
         axis=1,
     ).max(axis=1)
+    true_range.iloc[0] = np.nan
 
-    return true_range.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
+    atr_values = pd.Series(index=df.index, dtype=float)
+    if len(true_range) <= period:
+        return atr_values
+
+    initial_window = true_range.iloc[1 : period + 1]
+    initial_atr = initial_window.mean(skipna=True)
+    if pd.isna(initial_atr):
+        return atr_values
+
+    atr_values.iloc[:period] = np.nan
+    atr_values.iloc[period] = initial_atr
+    for i in range(period + 1, len(true_range)):
+        atr_values.iloc[i] = (atr_values.iloc[i - 1] * (period - 1) + true_range.iloc[i]) / period
+
+    return atr_values
 
 
 def rolling_percentile(series: pd.Series, lookback: int) -> pd.Series:

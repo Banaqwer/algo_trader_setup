@@ -59,11 +59,10 @@ def _resample_ohlc(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     """
     Deterministic OHLC resampling. No lookahead (uses first/max/min/last).
     """
-    resampled = (
-        df.resample(rule)
-        .agg({"open": "first", "high": "max", "low": "min", "close": "last"})
-        .dropna()
-    )
+    agg = {"open": "first", "high": "max", "low": "min", "close": "last"}
+    if "volume" in df.columns:
+        agg["volume"] = "sum"
+    resampled = df.resample(rule, closed="right", label="left").agg(agg).dropna()
     resampled.index.name = "timestamp"
     return resampled
 
